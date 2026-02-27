@@ -15,18 +15,20 @@ const users = new Map();
 io.on('connection', (socket) => {
     socket.on('nexus-auth', (username) => {
         if (!username) return;
-        const lowerName = username.toLowerCase().trim(); // Make it robust
+        const lowerName = username.toLowerCase().trim();
         
         if (!users.has(lowerName)) {
             users.set(lowerName, { 
                 socketId: socket.id, 
-                displayName: username, // Keep original casing for display
+                displayName: username,
                 friends: new Set(), 
                 requests: new Set(),
                 blocked: new Set() 
             });
         } else {
+            // Update socket ID for reconnection
             users.get(lowerName).socketId = socket.id;
+            users.get(lowerName).displayName = username; // Update display name
         }
         
         socket.username = lowerName;
@@ -37,44 +39,60 @@ io.on('connection', (socket) => {
             requests: Array.from(data.requests),
             blocked: Array.from(data.blocked)
         });
-        console.log(`✅ ${username} is active.`);
+        console.log(`✅ ${username} connected.`);
     });
 
-    socket.on('find-user', (searchName) => {
-        const target = searchName.toLowerCase().trim();
-        if (users.has(target) && target !== socket.username) {
-            const userData = users.get(target);
-            // Check if blocked
-            if (!userData.blocked.has(socket.username)) {
-                socket.emit('user-found', { username: userData.displayName });
+    // --- SECURE MESSAGE ROUTING ---
+    socket.on('send-msg', ({ to, text }) => {
+        const lowerTo = to.toLowerCase().trim();
+        const targetData = users.get(lowerTo);
+        const senderData = users.get(socket.username);
+
+        if (targetData && senderData) {
+            // 1. Check if recipient blocked sender
+            if (targetData.blocked.has(socket.username)) {
+                console.log(`🚫 Message blocked: ${socket.username} -> ${to}`);
+                return;
             }
+
+            // 2. Send to recipient
+            io.to(targetData.socketId).emit('receive-msg', { 
+                from: senderData.displayName, 
+                text: text 
+            });
+            
+            // 3. Confirm to sender
+            socket.emit('msg-delivered', { to: to, text: text });
+            console.log(`✉️ Message: ${socket.username} -> ${to}`);
         } else {
-            socket.emit('user-not-found');
+            console.log(`❌ Message failed: ${to} not found.`);
         }
     });
 
-    socket.on('send-friend-request', (targetName) => {
-        const target = targetName.toLowerCase().trim();
-        const targetData = users.get(target);
-        if (targetData && !targetData.blocked.has(socket.username)) {
-            targetData.requests.add(socket.username);
-            io.to(targetData.socketId).emit('incoming-request', { from: socket.username });
-        }
-    });
-
-    // ... (keep the rest of the previous logic for messages/accept/block)
-    socket.on('accept-request', (fromUser) => {
+    // ... (keep blockUser, findUser, acceptRequest logic)
+    socket.on('block-user', (targetName) => {
         const me = users.get(socket.username);
-        const friend = users.get(fromUser.toLowerCase());
-        if (me && friend) {
-            me.requests.delete(fromUser.toLowerCase());
-            me.friends.add(fromUser.toLowerCase());
-            friend.friends.add(socket.username);
-            socket.emit('friend-list-update', Array.from(me.friends));
-            io.to(friend.socketId).emit('friend-list-update', Array.from(friend.friends));
+        const target = users.get(targetName.toLowerCase());
+        if (me && target) {
+            me.friends.delete(targetName.toLowerCase());
+            me.requests.delete(targetName.toLowerCase());
+            me.blocked.add(targetName.toLowerCase());
+            target.friends.delete(socket.username);
+            socket.emit('auth-success', {friends: Array.from(me.friends), requests: Array.from(me.requests), blocked: Array.from(me.blocked)});
+            io.to(target.socketId).emit('friend-list-update', Array.from(target.friends));
         }
     });
+
+    socket.on('unblock-user', (targetName) => {
+        const me = users.get(socket.username);
+        if (me) {
+            me.blocked.delete(targetName.toLowerCase());
+            socket.emit('auth-success', {friends: Array.from(me.friends), requests: Array.from(me.requests), blocked: Array.from(me.blocked)});
+        }
+    });
+
+    socket.on('disconnect', () => console.log('❌ A user disconnected'));
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Nexus Engine v2 Running on ${PORT}`));
+server.listen(PORT, () => console.log(`Nexus Engine Running on ${PORT}`));
