@@ -55,7 +55,7 @@
     <div id="search-modal" class="overlay">
         <div class="modal">
             <h3>Discover Users</h3>
-            <p style="font-size: 12px; opacity: 0.6; margin-top: 5px;">Type exact username</p>
+            <p style="font-size: 12px; opacity: 0.6; margin-top: 5px;">Type username to find</p>
             <input type="text" id="search-u" placeholder="Username..." onkeyup="searchUser(this.value)">
             <div id="search-result"></div>
             <button onclick="closeSearch()" style="color:white; background:none; border:none; margin-top:20px; cursor:pointer; opacity: 0.6;">Cancel</button>
@@ -122,15 +122,32 @@
             if(val.length > 1) socket.emit('find-user', val); 
         }
 
-        socket.on('user-found', (user) => {
-            document.getElementById('search-result').innerHTML = `
-                <div class="user-card" style="margin-top:15px; cursor:default;">
+        // --- RENDER LIVE SEARCH LIST ---
+        socket.on('users-found', (userList) => {
+            let html = "";
+            userList.forEach(user => {
+                // Check if user is already a friend
+                const isFriend = data.friends.some(f => f.toLowerCase() === user.username.toLowerCase());
+                
+                html += `
+                <div class="user-card" style="margin-top:10px; cursor:default;">
                     <div style="display:flex; align-items:center;">
                         <div class="avatar">${user.username[0].toUpperCase()}</div>
                         <span>${user.username}</span>
                     </div>
-                    <button class="add-btn" onclick="addFriend('${user.username}')" style="background:var(--accent);">Add</button>
+                    ${isFriend ? 
+                      `<span style="opacity:0.5; font-size:12px;">Friend</span>` : 
+                      `<button class="add-btn" onclick="addFriend('${user.username}')" style="background:var(--accent);">Add</button>`
+                    }
                 </div>`;
+            });
+            document.getElementById('search-result').innerHTML = html;
+        });
+
+        socket.on('users-not-found', () => {
+            document.getElementById('search-result').innerHTML = `
+                <p style="text-align:center; opacity:0.5; margin-top:20px; font-size:13px;">No users found</p>
+            `;
         });
 
         function addFriend(name) { 
@@ -256,9 +273,6 @@
             // Only show message if we are currently chatting with the sender
             if(currentFriend && m.from.toLowerCase() === currentFriend.toLowerCase()) {
                 appendMsg(m.from, m.text, 'received'); 
-            } else {
-                console.log("New background message from:", m.from);
-                // Optionally add a notification dot to their name in the sidebar here
             }
         });
 
