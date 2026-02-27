@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus | Functional App</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        :root { --bg: #0f172a; --card: #1e293b; --p: #6366f1; }
+        body { font-family: sans-serif; background: var(--bg); color: white; display: flex; height: 100vh; margin: 0; }
+        
+        #sidebar { width: 300px; background: #111827; border-right: 1px solid #334155; padding: 20px; }
+        #chat { flex: 1; display: flex; flex-direction: column; }
+        #messages { flex: 1; padding: 20px; overflow-y: scroll; display: flex; flex-direction: column; gap: 10px; }
+        
+        .bubble { padding: 12px; border-radius: 12px; max-width: 60%; font-size: 14px; }
+        .sent { background: var(--p); align-self: flex-end; }
+        .received { background: var(--card); align-self: flex-start; }
+        
+        .input-area { padding: 20px; background: var(--card); display: flex; gap: 10px; }
+        input { flex: 1; padding: 12px; border-radius: 8px; border: none; background: #0f172a; color: white; }
+        button { padding: 10px 20px; background: var(--p); color: white; border: none; border-radius: 8px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <h2>Nexus</h2>
+        <input type="text" id="username" placeholder="Your Name" style="margin-top:10px; width:100%; padding:10px; border-radius:8px; border:none; background:#0f172a; color:white;">
+        <button onclick="setName()" style="margin-top:10px; width:100%">Set Name</button>
+    </div>
+    
+    <div id="chat">
+        <div id="messages"></div>
+        <div class="input-area">
+            <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="checkEnter(event)">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        // --- REAL-TIME ENGINE ---
+        // REPLACE WITH YOUR RENDER URL AFTER HOSTING
+        const socket = io('http://localhost:3000'); 
+        
+        let username = localStorage.getItem('nexus_user') || 'Anonymous';
+        document.getElementById('username').value = username;
+
+        function setName() {
+            username = document.getElementById('username').value;
+            localStorage.setItem('nexus_user', username);
+        }
+
+        function checkEnter(e) { if(e.key === 'Enter') sendMessage(); }
+
+        function sendMessage() {
+            const input = document.getElementById('msg-input');
+            const msg = input.value;
+            if(!msg) return;
+            
+            // Send to server
+            socket.emit('message', { user: username, text: msg });
+            input.value = '';
+        }
+
+        // Receive from server
+        socket.on('message', data => {
+            const container = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `bubble ${data.user === username ? 'sent' : 'received'}`;
+            div.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        });
+    </script>
+</body>
+</html>
