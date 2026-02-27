@@ -6,37 +6,45 @@ const cors = require('cors');
 const app = express();
 app.use(cors());
 
-// Serve the frontend file
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
-});
-
 const server = http.createServer(app);
-
-// Configure Socket.io with CORS
 const io = new Server(server, {
-  cors: {
-    origin: "*", // Allow all origins for testing
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
+
+// Store connected users: { username: socketId }
+const users = {};
 
 io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+  console.log('User connected:', socket.id);
 
-  // Listen for messages
-  socket.on('message', (data) => {
-    console.log('Message received:', data);
-    // Broadcast to ALL connected users
-    io.emit('message', data);
+  // Register user mapping
+  socket.on('register', (username) => {
+    users[username] = socket.id;
+    console.log(`User registered: ${username} with ID: ${socket.id}`);
+  });
+
+  // Private message routing
+  socket.on('private_message', ({ to, text, from }) => {
+    const recipientSocketId = users[to];
+    if (recipientSocketId) {
+      // Send only to the recipient
+      io.to(recipientSocketId).emit('private_message', { from, text });
+      // Send back to the sender so they see it in their own chat window
+      socket.emit('private_message', { from, text, isSender: true });
+    }
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected');
+    // Remove user on disconnect
+    for (let username in users) {
+      if (users[username] === socket.id) {
+        delete users[username];
+        break;
+      }
+    }
   });
 });
 
-// Port for Render.com
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
