@@ -10,80 +10,109 @@ app.use(express.static(__dirname));
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// --- DATA STORE (In-memory for "Real" feel during runtime) ---
-const users = new Map(); // username -> { socketId, friends: [], requests: [] }
+// --- EXTENDED DATA STORE ---
+const users = new Map(); // username -> { socketId, friends: Set, requests: Set, blocked: Set }
 
 io.on('connection', (socket) => {
-    
-    // 1. REGISTER / LOGIN
     socket.on('nexus-auth', (username) => {
         if (!username) return;
-        
-        // If user doesn't exist in our memory, create them
         if (!users.has(username)) {
-            users.set(username, { socketId: socket.id, friends: new Set(), requests: new Set() });
+            users.set(username, { 
+                socketId: socket.id, 
+                friends: new Set(), 
+                requests: new Set(),
+                blocked: new Set() 
+            });
         } else {
-            // Update socket ID for existing user
-            const userData = users.get(username);
-            userData.socketId = socket.id;
+            users.get(username).socketId = socket.id;
         }
-        
         socket.username = username;
-        
-        // Send the user their specific data
         const data = users.get(username);
         socket.emit('auth-success', {
             friends: Array.from(data.friends),
-            requests: Array.from(data.requests)
+            requests: Array.from(data.requests),
+            blocked: Array.from(data.blocked)
         });
     });
 
-    // 2. SEARCH & ADD FRIEND
-    socket.on('find-user', (targetName) => {
-        if (users.has(targetName) && targetName !== socket.username) {
-            socket.emit('user-found', { username: targetName });
-        } else {
-            socket.emit('user-not-found');
+    // --- BLOCKING LOGIC ---
+    socket.on('block-user', (targetName) => {
+        const me = users.get(socket.username);
+        const target = users.get(targetName);
+
+        if (me && target) {
+            me.friends.delete(targetName);
+            me.requests.delete(targetName);
+            me.blocked.add(targetName);
+            
+            target.friends.delete(socket.username);
+
+            socket.emit('auth-success', {
+                friends: Array.from(me.friends),
+                requests: Array.from(me.requests),
+                blocked: Array.from(me.blocked)
+            });
+            io.to(target.socketId).emit('friend-list-update', Array.from(target.friends));
         }
     });
 
+    socket.on('unblock-user', (targetName) => {
+        const me = users.get(socket.username);
+        if (me) {
+            me.blocked.delete(targetName);
+            socket.emit('auth-success', {
+                friends: Array.from(me.friends),
+                requests: Array.from(me.requests),
+                blocked: Array.from(me.blocked)
+            });
+        }
+    });
+
+    // --- INTERCEPTED REQUESTS ---
     socket.on('send-friend-request', (targetName) => {
         const target = users.get(targetName);
         if (target) {
+            // Check if requester is blocked by target
+            if (target.blocked.has(socket.username)) {
+                console.log(`${socket.username} is blocked by ${targetName}`);
+                return; // Silently fail to prevent stalkers knowing they are blocked
+            }
             target.requests.add(socket.username);
             io.to(target.socketId).emit('incoming-request', { from: socket.username });
         }
     });
 
-    // 3. ACCEPT REQUEST
+    socket.on('find-user', (targetName) => {
+        const me = users.get(socket.username);
+        // Only show users who haven't blocked you
+        if (users.has(targetName) && targetName !== socket.username) {
+            const target = users.get(targetName);
+            if (!target.blocked.has(socket.username)) {
+                socket.emit('user-found', { username: targetName });
+            }
+        }
+    });
+
     socket.on('accept-request', (fromUser) => {
         const me = users.get(socket.username);
         const friend = users.get(fromUser);
-
         if (me && friend) {
             me.requests.delete(fromUser);
             me.friends.add(fromUser);
             friend.friends.add(socket.username);
-
-            // Notify both to update their UI
             socket.emit('friend-list-update', Array.from(me.friends));
             io.to(friend.socketId).emit('friend-list-update', Array.from(friend.friends));
         }
     });
 
-    // 4. PRIVATE MESSAGING
     socket.on('send-msg', ({ to, text }) => {
         const target = users.get(to);
-        if (target) {
+        if (target && !target.blocked.has(socket.username)) {
             io.to(target.socketId).emit('receive-msg', { from: socket.username, text });
             socket.emit('msg-delivered', { to, text });
         }
     });
-
-    socket.on('disconnect', () => {
-        console.log(`${socket.username} disconnected`);
-    });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Nexus Real-Time running on ${PORT}`));
+server.listen(PORT, () => console.log(`Nexus System Online on ${PORT}`));
