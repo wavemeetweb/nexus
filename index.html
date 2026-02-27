@@ -6,7 +6,7 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        :root { --bg: #0f172a; --side: #111827; --p: #6366f1; --card: #1e293b; --text: #f8fafc; --danger: #ef4444; }
+        :root { --bg: #0f172a; --side: #111827; --p: #6366f1; --card: #1e293b; --text: #f8fafc; --danger: #ef4444; --accent: #10b981; }
         * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
         body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
 
@@ -81,7 +81,9 @@
 
     <script>
         lucide.createIcons();
-        const socket = io('http://localhost:3000'); // SET TO RENDER URL
+        // --- YOUR RENDER URL ---
+        const socket = io('https://nexus-w4w9.onrender.com'); 
+        
         let me = "";
         let currentFriend = "";
         let data = { friends: [], requests: [], blocked: [] };
@@ -100,7 +102,7 @@
         });
 
         function openSearch() { document.getElementById('search-modal').style.display = 'flex'; }
-        function closeSearch() { document.getElementById('search-modal').style.display = 'none'; }
+        function closeSearch() { document.getElementById('search-modal').style.display = 'none'; document.getElementById('search-result').innerHTML = ''; }
         function searchUser(val) { if(val.length > 1) socket.emit('find-user', val); }
 
         socket.on('user-found', (user) => {
