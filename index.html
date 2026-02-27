@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus | Functional App</title>
+    <title>Nexus | Private Chat</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <style>
         :root { --bg: #0f172a; --card: #1e293b; --p: #6366f1; }
@@ -27,6 +26,9 @@
         <h2>Nexus</h2>
         <input type="text" id="username" placeholder="Your Name" style="margin-top:10px; width:100%; padding:10px; border-radius:8px; border:none; background:#0f172a; color:white;">
         <button onclick="setName()" style="margin-top:10px; width:100%">Set Name</button>
+        
+        <h4 style="margin-top:20px;">Send To:</h4>
+        <input type="text" id="target-user" placeholder="Friend's Name" style="width:100%; padding:10px; border-radius:8px; border:none; background:#0f172a; color:white;">
     </div>
     
     <div id="chat">
@@ -38,36 +40,44 @@
     </div>
 
     <script>
-        // --- REAL-TIME ENGINE ---
-        // REPLACE WITH YOUR RENDER URL AFTER HOSTING
+        // REPLACE WITH YOUR RENDER URL
         const socket = io('https://nexus-w4w9.onrender.com'); 
         
         let username = localStorage.getItem('nexus_user') || 'Anonymous';
         document.getElementById('username').value = username;
 
+        // Register user with server
+        socket.emit('register', username);
+
         function setName() {
             username = document.getElementById('username').value;
             localStorage.setItem('nexus_user', username);
+            socket.emit('register', username);
         }
 
         function checkEnter(e) { if(e.key === 'Enter') sendMessage(); }
 
         function sendMessage() {
             const input = document.getElementById('msg-input');
+            const target = document.getElementById('target-user').value;
             const msg = input.value;
-            if(!msg) return;
             
-            // Send to server
-            socket.emit('message', { user: username, text: msg });
+            if(!msg || !target) return alert("Enter message and recipient");
+            
+            // Send private message
+            socket.emit('private_message', { to: target, text: msg, from: username });
             input.value = '';
         }
 
-        // Receive from server
-        socket.on('message', data => {
+        // Receive private message
+        socket.on('private_message', data => {
             const container = document.getElementById('messages');
             const div = document.createElement('div');
-            div.className = `bubble ${data.user === username ? 'sent' : 'received'}`;
-            div.innerHTML = `<strong>${data.user}:</strong> ${data.text}`;
+            
+            // Highlight if sent by me or received
+            div.className = `bubble ${data.isSender ? 'sent' : 'received'}`;
+            div.innerHTML = `<strong>${data.from}:</strong> ${data.text}`;
+            
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
         });
