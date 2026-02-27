@@ -10,11 +10,13 @@ app.use(express.static(__dirname));
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
+// username -> { socketId, displayName, friends: Set, requests: Set, blocked: Set }
 const users = new Map(); 
 
 io.on('connection', (socket) => {
     socket.on('nexus-auth', (username) => {
         if (!username) return;
+        
         const lowerName = username.toLowerCase().trim();
         
         if (!users.has(lowerName)) {
@@ -26,9 +28,9 @@ io.on('connection', (socket) => {
                 blocked: new Set() 
             });
         } else {
-            // Update socket ID for reconnection
-            users.get(lowerName).socketId = socket.id;
-            users.get(lowerName).displayName = username; // Update display name
+            const userData = users.get(lowerName);
+            userData.socketId = socket.id;
+            userData.displayName = username;
         }
         
         socket.username = lowerName;
@@ -42,42 +44,69 @@ io.on('connection', (socket) => {
         console.log(`✅ ${username} connected.`);
     });
 
-    // --- SECURE MESSAGE ROUTING ---
-    socket.on('send-msg', ({ to, text }) => {
-        const lowerTo = to.toLowerCase().trim();
-        const targetData = users.get(lowerTo);
-        const senderData = users.get(socket.username);
+    // --- SEARCH LISTENER ---
+    socket.on('find-user', (searchName) => {
+        const target = searchName.toLowerCase().trim();
+        if (!target) return;
 
-        if (targetData && senderData) {
-            // 1. Check if recipient blocked sender
-            if (targetData.blocked.has(socket.username)) {
-                console.log(`🚫 Message blocked: ${socket.username} -> ${to}`);
-                return;
+        const results = [];
+        for (const [lowerName, userData] of users.entries()) {
+            if (lowerName.includes(target) && lowerName !== socket.username) {
+                if (!userData.blocked.has(socket.username)) {
+                    results.push({ username: userData.displayName });
+                }
             }
-
-            // 2. Send to recipient
-            io.to(targetData.socketId).emit('receive-msg', { 
-                from: senderData.displayName, 
-                text: text 
-            });
-            
-            // 3. Confirm to sender
-            socket.emit('msg-delivered', { to: to, text: text });
-            console.log(`✉️ Message: ${socket.username} -> ${to}`);
+        }
+        
+        // --- THIS MUST MATCH INDEX.HTML ---
+        if (results.length > 0) {
+            socket.emit('users-found', results);
         } else {
-            console.log(`❌ Message failed: ${to} not found.`);
+            socket.emit('users-not-found');
         }
     });
 
-    // ... (keep blockUser, findUser, acceptRequest logic)
+    socket.on('send-friend-request', (targetName) => {
+        const lowerTarget = targetName.toLowerCase().trim();
+        const targetData = users.get(lowerTarget);
+        const senderData = users.get(socket.username);
+
+        if (targetData && senderData && !targetData.blocked.has(socket.username)) {
+            targetData.requests.add(senderData.displayName);
+            io.to(targetData.socketId).emit('incoming-request', { from: senderData.displayName });
+        }
+    });
+
+    // ... (rest of the functions: accept-request, send-msg, block, unblock)
+    socket.on('accept-request', (fromUser) => {
+        const meData = users.get(socket.username);
+        const friendData = users.get(fromUser.toLowerCase().trim());
+        if (meData && friendData) {
+            meData.requests.delete(fromUser);
+            meData.friends.add(fromUser);
+            friendData.friends.add(meData.displayName);
+            socket.emit('auth-success', {friends: Array.from(meData.friends), requests: Array.from(meData.requests), blocked: Array.from(meData.blocked)});
+            io.to(friendData.socketId).emit('friend-list-update', Array.from(friendData.friends));
+        }
+    });
+
+    socket.on('send-msg', ({ to, text }) => {
+        const targetData = users.get(to.toLowerCase().trim());
+        const senderData = users.get(socket.username);
+        if (targetData && senderData && !targetData.blocked.has(socket.username)) {
+            io.to(targetData.socketId).emit('receive-msg', { from: senderData.displayName, text: text });
+            socket.emit('msg-delivered', { to: to, text: text });
+        }
+    });
+    
     socket.on('block-user', (targetName) => {
         const me = users.get(socket.username);
-        const target = users.get(targetName.toLowerCase());
+        const target = users.get(targetName.toLowerCase().trim());
         if (me && target) {
-            me.friends.delete(targetName.toLowerCase());
-            me.requests.delete(targetName.toLowerCase());
-            me.blocked.add(targetName.toLowerCase());
-            target.friends.delete(socket.username);
+            me.friends.delete(targetName);
+            me.requests.delete(targetName);
+            me.blocked.add(targetName);
+            target.friends.delete(me.displayName);
             socket.emit('auth-success', {friends: Array.from(me.friends), requests: Array.from(me.requests), blocked: Array.from(me.blocked)});
             io.to(target.socketId).emit('friend-list-update', Array.from(target.friends));
         }
@@ -86,12 +115,10 @@ io.on('connection', (socket) => {
     socket.on('unblock-user', (targetName) => {
         const me = users.get(socket.username);
         if (me) {
-            me.blocked.delete(targetName.toLowerCase());
+            me.blocked.delete(targetName);
             socket.emit('auth-success', {friends: Array.from(me.friends), requests: Array.from(me.requests), blocked: Array.from(me.blocked)});
         }
     });
-
-    socket.on('disconnect', () => console.log('❌ A user disconnected'));
 });
 
 const PORT = process.env.PORT || 3000;
