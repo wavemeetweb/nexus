@@ -8,15 +8,22 @@ app.use(cors());
 app.use(express.static(__dirname));
 
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" }, maxHttpBufferSize: 2e7 });
+const io = new Server(server, { 
+    cors: { origin: "*" }, 
+    maxHttpBufferSize: 2e7 // 20MB for high-res files
+});
 
-const users = new Map(); 
-const groups = new Map();
+const users = new Map(); // slug -> userObject
+const groups = new Map(); // gId -> groupObject
 
+// The Sync Engine: Keeps UI updated across all devices
 const sync = (slug) => {
     const u = users.get(slug);
     if (!u || !u.socketId) return;
-    const gList = Array.from(groups).filter(([id, g]) => g.members.has(slug)).map(([id, g]) => ({ id, name: g.name }));
+    const gList = Array.from(groups)
+        .filter(([id, g]) => g.members.has(slug))
+        .map(([id, g]) => ({ id, name: g.name }));
+    
     io.to(u.socketId).emit('ui-sync', {
         profile: { name: u.displayName, bio: u.bio, socials: u.socials },
         friends: Array.from(u.friends),
@@ -31,59 +38,28 @@ io.on('connection', (socket) => {
         if (!users.has(slug)) {
             users.set(slug, {
                 socketId: socket.id, displayName: username,
-                bio: "Establishing connection...", socials: { x: "", yt: "", ig: "" },
-                friends: new Set(), pending: new Set(), blocked: new Set()
+                bio: "New to Nexus.", socials: { x: "", yt: "", ig: "" },
+                friends: new Set(), pending: new Set()
             });
         } else { users.get(slug).socketId = socket.id; }
         socket.username = slug;
         sync(slug);
     });
 
-    // SETTINGS & PROFILE LOGIC
+    // Profile Logic
     socket.on('profile-update', (data) => {
         const u = users.get(socket.username);
         if (u) {
             u.displayName = data.name || u.displayName;
             u.bio = data.bio || u.bio;
-            u.socials = data.socials;
-            sync(socket.username);
+            u.socials = data.socials || u.socials;
+            sync(socket.username); 
         }
     });
 
-    // CALLING LOGIC (Signaling)
-    socket.on('call-init', ({ to, type, offer }) => {
-        const target = users.get(to.toLowerCase().trim());
-        if (target) io.to(target.socketId).emit('call-receive', { from: socket.username, type, offer });
-    });
-
-    socket.on('call-reply', ({ to, answer }) => {
-        const target = users.get(to.toLowerCase().trim());
-        if (target) io.to(target.socketId).emit('call-ready', { answer });
-    });
-
-    socket.on('ice-signal', ({ to, candidate }) => {
-        const target = users.get(to.toLowerCase().trim());
-        if (target) io.to(target.socketId).emit('ice-signal', { candidate });
-    });
-
-    // GROUP LOGIC
-    socket.on('group-make', ({ name, members }) => {
-        const gId = 'g_' + Date.now();
-        const set = new Set([socket.username, ...members.map(m => m.toLowerCase().trim())]);
-        groups.set(gId, { name, members: set });
-        set.forEach(m => {
-            const u = users.get(m);
-            if (u && u.socketId) {
-                const s = io.sockets.sockets.get(u.socketId);
-                if (s) s.join(gId);
-                sync(m);
-            }
-        });
-    });
-
-    // FRIEND REQUESTS & CHAT (Same as Zenith Edition)
-    socket.on('req-send', (t) => {
-        const ts = t.toLowerCase().trim();
+    // Friendship Logic
+    socket.on('req-send', (targetName) => {
+        const ts = targetName.toLowerCase().trim();
         const target = users.get(ts);
         if (target && ts !== socket.username) {
             target.pending.add(users.get(socket.username).displayName);
@@ -93,30 +69,61 @@ io.on('connection', (socket) => {
 
     socket.on('req-accept', (name) => {
         const me = users.get(socket.username);
-        const peer = users.get(name.toLowerCase().trim());
+        const peerSlug = name.toLowerCase().trim();
+        const peer = users.get(peerSlug);
         if (me && peer) {
             me.pending.delete(name);
             me.friends.add(peer.displayName);
             peer.friends.add(me.displayName);
-            sync(socket.username); sync(name.toLowerCase().trim());
+            sync(socket.username); sync(peerSlug);
         }
     });
 
-    socket.on('msg-out', (p) => {
+    // Group Logic
+    socket.on('group-make', ({ name, members }) => {
+        const gId = 'g_' + Date.now();
+        const memberSlugs = [socket.username, ...members.map(m => m.toLowerCase().trim())];
+        groups.set(gId, { name, members: new Set(memberSlugs) });
+        memberSlugs.forEach(slug => {
+            const u = users.get(slug);
+            if (u && u.socketId) {
+                const s = io.sockets.sockets.get(u.socketId);
+                if (s) s.join(gId);
+                sync(slug);
+            }
+        });
+    });
+
+    // Messaging Logic
+    socket.on('msg-out', (payload) => {
+        const sender = users.get(socket.username);
         const mId = 'm_' + Date.now();
-        const data = { id: mId, from: socket.username, text: p.text, file: p.file };
-        if (p.type === 'group') io.to(p.to).emit('msg-in', { ...data, channel: p.to });
-        else {
-            const target = users.get(p.to.toLowerCase().trim());
-            if (target) io.to(target.socketId).emit('msg-in', data);
-            socket.emit('msg-status', { id: mId, status: 'delivered' });
+        const data = { id: mId, from: sender.displayName, fromSlug: socket.username, text: payload.text, file: payload.file };
+
+        if (payload.type === 'group') {
+            io.to(payload.to).emit('msg-in', { ...data, channel: payload.to });
+        } else {
+            const target = users.get(payload.to.toLowerCase().trim());
+            if (target) {
+                io.to(target.socketId).emit('msg-in', data);
+                socket.emit('msg-status', { id: mId, status: 'delivered' });
+            }
         }
     });
 
-    socket.on('msg-read', ({ mId, toSlug }) => {
-        const u = users.get(toSlug);
-        if (u) io.to(u.socketId).emit('msg-status', { id: mId, status: 'read' });
+    // WebRTC Signaling
+    socket.on('call-init', (d) => {
+        const target = users.get(d.to.toLowerCase().trim());
+        if (target) io.to(target.socketId).emit('call-receive', { from: socket.username, type: d.type, offer: d.offer });
+    });
+    socket.on('call-reply', (d) => {
+        const target = users.get(d.to.toLowerCase().trim());
+        if (target) io.to(target.socketId).emit('call-ready', { answer: d.answer });
+    });
+    socket.on('ice-signal', (d) => {
+        const target = users.get(d.to.toLowerCase().trim());
+        if (target) io.to(target.socketId).emit('ice-signal', { candidate: d.candidate });
     });
 });
 
-server.listen(process.env.PORT || 3000);
+server.listen(process.env.PORT || 3000, () => console.log("Zenith Active"));
