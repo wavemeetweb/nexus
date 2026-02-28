@@ -21,7 +21,6 @@ const sync = (slug) => {
         profile: { name: u.displayName, bio: u.bio, socials: u.socials },
         friends: Array.from(u.friends),
         pending: Array.from(u.pending),
-        blocked: Array.from(u.blocked),
         groups: gList
     });
 };
@@ -40,65 +39,83 @@ io.on('connection', (socket) => {
         sync(slug);
     });
 
-    // RELATIONSHIP LOGIC
-    socket.on('friend-request-send', (targetName) => {
-        const targetSlug = targetName.toLowerCase().trim();
-        const me = users.get(socket.username);
-        const target = users.get(targetSlug);
-
-        if (target && targetSlug !== socket.username && !target.blocked.has(me.displayName)) {
-            target.pending.add(me.displayName);
-            sync(targetSlug);
-            socket.emit('sys-msg', `Request sent to ${target.displayName}`);
-        } else {
-            socket.emit('sys-msg', "User not found or blocked.");
+    // SETTINGS & PROFILE LOGIC
+    socket.on('profile-update', (data) => {
+        const u = users.get(socket.username);
+        if (u) {
+            u.displayName = data.name || u.displayName;
+            u.bio = data.bio || u.bio;
+            u.socials = data.socials;
+            sync(socket.username);
         }
     });
 
-    socket.on('friend-request-accept', (requesterName) => {
+    // CALLING LOGIC (Signaling)
+    socket.on('call-init', ({ to, type, offer }) => {
+        const target = users.get(to.toLowerCase().trim());
+        if (target) io.to(target.socketId).emit('call-receive', { from: socket.username, type, offer });
+    });
+
+    socket.on('call-reply', ({ to, answer }) => {
+        const target = users.get(to.toLowerCase().trim());
+        if (target) io.to(target.socketId).emit('call-ready', { answer });
+    });
+
+    socket.on('ice-signal', ({ to, candidate }) => {
+        const target = users.get(to.toLowerCase().trim());
+        if (target) io.to(target.socketId).emit('ice-signal', { candidate });
+    });
+
+    // GROUP LOGIC
+    socket.on('group-make', ({ name, members }) => {
+        const gId = 'g_' + Date.now();
+        const set = new Set([socket.username, ...members.map(m => m.toLowerCase().trim())]);
+        groups.set(gId, { name, members: set });
+        set.forEach(m => {
+            const u = users.get(m);
+            if (u && u.socketId) {
+                const s = io.sockets.sockets.get(u.socketId);
+                if (s) s.join(gId);
+                sync(m);
+            }
+        });
+    });
+
+    // FRIEND REQUESTS & CHAT (Same as Zenith Edition)
+    socket.on('req-send', (t) => {
+        const ts = t.toLowerCase().trim();
+        const target = users.get(ts);
+        if (target && ts !== socket.username) {
+            target.pending.add(users.get(socket.username).displayName);
+            sync(ts);
+        }
+    });
+
+    socket.on('req-accept', (name) => {
         const me = users.get(socket.username);
-        const peerSlug = requesterName.toLowerCase().trim();
-        const peer = users.get(peerSlug);
+        const peer = users.get(name.toLowerCase().trim());
         if (me && peer) {
-            me.pending.delete(requesterName);
+            me.pending.delete(name);
             me.friends.add(peer.displayName);
             peer.friends.add(me.displayName);
-            sync(socket.username);
-            sync(peerSlug);
+            sync(socket.username); sync(name.toLowerCase().trim());
         }
     });
 
-    socket.on('user-block', (targetName) => {
-        const me = users.get(socket.username);
-        const targetSlug = targetName.toLowerCase().trim();
-        me.friends.delete(targetName);
-        me.blocked.add(targetName);
-        sync(socket.username);
-        // Also remove me from their list
-        const target = users.get(targetSlug);
-        if(target) { target.friends.delete(me.displayName); sync(targetSlug); }
-    });
-
-    // MESSAGE LOGIC
-    socket.on('msg-out', (payload) => {
-        const sender = users.get(socket.username);
-        const target = users.get(payload.to.toLowerCase().trim());
-        if (target && target.blocked.has(sender.displayName)) return; // Blocked check
-
+    socket.on('msg-out', (p) => {
         const mId = 'm_' + Date.now();
-        const data = { id: mId, from: sender.displayName, fromSlug: socket.username, text: payload.text, file: payload.file, type: payload.type };
-
-        if (payload.type === 'group') {
-            io.to(payload.to).emit('msg-in', { ...data, channel: payload.to });
-        } else if (target) {
-            io.to(target.socketId).emit('msg-in', data);
+        const data = { id: mId, from: socket.username, text: p.text, file: p.file };
+        if (p.type === 'group') io.to(p.to).emit('msg-in', { ...data, channel: p.to });
+        else {
+            const target = users.get(p.to.toLowerCase().trim());
+            if (target) io.to(target.socketId).emit('msg-in', data);
             socket.emit('msg-status', { id: mId, status: 'delivered' });
         }
     });
 
-    socket.on('msg-seen', ({ mId, toSlug }) => {
-        const sender = users.get(toSlug);
-        if (sender) io.to(sender.socketId).emit('msg-status', { id: mId, status: 'read' });
+    socket.on('msg-read', ({ mId, toSlug }) => {
+        const u = users.get(toSlug);
+        if (u) io.to(u.socketId).emit('msg-status', { id: mId, status: 'read' });
     });
 });
 
