@@ -8,69 +8,51 @@ app.use(cors());
 app.use(express.static(__dirname));
 
 const server = http.createServer(app);
-const io = new Server(server, { 
-    cors: { origin: "*" },
-    maxHttpBufferSize: 2e7 // 20MB
-});
+const io = new Server(server, { cors: { origin: "*" }, maxHttpBufferSize: 2e7 });
 
 const users = new Map(); 
 const groups = new Map();
 
-const syncClientUI = (username) => {
-    const slug = username.toLowerCase().trim();
-    const user = users.get(slug);
-    if (!user || !user.socketId) return;
-
-    const userGroups = Array.from(groups).filter(([id, g]) => g.members.has(slug))
-        .map(([id, g]) => ({ id, name: g.name }));
-
-    io.to(user.socketId).emit('ui-state-update', {
-        profile: { name: user.displayName, bio: user.bio, socials: user.socials },
-        friends: Array.from(user.friends),
-        pending: Array.from(user.pending),
-        blocked: Array.from(user.blocked),
-        groups: userGroups
+const sync = (slug) => {
+    const u = users.get(slug);
+    if (!u || !u.socketId) return;
+    const gList = Array.from(groups).filter(([id, g]) => g.members.has(slug)).map(([id, g]) => ({ id, name: g.name }));
+    io.to(u.socketId).emit('ui-sync', {
+        profile: { name: u.displayName, bio: u.bio, socials: u.socials },
+        friends: Array.from(u.friends),
+        pending: Array.from(u.pending),
+        blocked: Array.from(u.blocked),
+        groups: gList
     });
 };
 
 io.on('connection', (socket) => {
     socket.on('nexus-auth', (username) => {
-        if (!username) return;
         const slug = username.toLowerCase().trim();
         if (!users.has(slug)) {
             users.set(slug, {
                 socketId: socket.id, displayName: username,
-                bio: "New to Nexus.", socials: { x: "", yt: "", ig: "" },
+                bio: "Establishing connection...", socials: { x: "", yt: "", ig: "" },
                 friends: new Set(), pending: new Set(), blocked: new Set()
             });
         } else { users.get(slug).socketId = socket.id; }
         socket.username = slug;
-        syncClientUI(slug);
+        sync(slug);
     });
 
-    socket.on('message-outgoing', (payload) => {
-        const sender = users.get(socket.username);
-        const msgId = 'msg_' + Date.now();
-        const data = { 
-            id: msgId, from: sender.displayName, fromSlug: socket.username,
-            text: payload.text, file: payload.file, type: payload.type 
-        };
+    // RELATIONSHIP LOGIC
+    socket.on('friend-request-send', (targetName) => {
+        const targetSlug = targetName.toLowerCase().trim();
+        const me = users.get(socket.username);
+        const target = users.get(targetSlug);
 
-        if (payload.type === 'group') {
-            io.to(payload.to).emit('message-incoming', { ...data, channel: payload.to });
+        if (target && targetSlug !== socket.username && !target.blocked.has(me.displayName)) {
+            target.pending.add(me.displayName);
+            sync(targetSlug);
+            socket.emit('sys-msg', `Request sent to ${target.displayName}`);
         } else {
-            const target = users.get(payload.to.toLowerCase().trim());
-            if (target) {
-                io.to(target.socketId).emit('message-incoming', data);
-                // Sender gets "Delivered" immediately
-                socket.emit('message-status', { id: msgId, status: 'delivered' });
-            }
+            socket.emit('sys-msg', "User not found or blocked.");
         }
-    });
-
-    socket.on('message-seen', ({ msgId, toSlug }) => {
-        const sender = users.get(toSlug.toLowerCase().trim());
-        if (sender) io.to(sender.socketId).emit('message-status', { id: msgId, status: 'read' });
     });
 
     socket.on('friend-request-accept', (requesterName) => {
@@ -81,26 +63,43 @@ io.on('connection', (socket) => {
             me.pending.delete(requesterName);
             me.friends.add(peer.displayName);
             peer.friends.add(me.displayName);
-            syncClientUI(socket.username);
-            syncClientUI(peerSlug);
+            sync(socket.username);
+            sync(peerSlug);
         }
     });
 
-    // ... Other logic for profile-update, group-create, signal-offer remains standard ...
-    socket.on('profile-update', (data) => {
-        const user = users.get(socket.username);
-        if (user) { Object.assign(user, data); syncClientUI(socket.username); }
+    socket.on('user-block', (targetName) => {
+        const me = users.get(socket.username);
+        const targetSlug = targetName.toLowerCase().trim();
+        me.friends.delete(targetName);
+        me.blocked.add(targetName);
+        sync(socket.username);
+        // Also remove me from their list
+        const target = users.get(targetSlug);
+        if(target) { target.friends.delete(me.displayName); sync(targetSlug); }
     });
-    
-    socket.on('group-create', ({ name, members }) => {
-        const gId = 'grp_' + Date.now();
-        const memberSet = new Set([socket.username, ...members.map(m => m.toLowerCase().trim())]);
-        groups.set(gId, { name, members: memberSet });
-        memberSet.forEach(m => {
-            const u = users.get(m);
-            if (u && u.socketId) { io.to(u.socketId).socketsJoin(gId); syncClientUI(m); }
-        });
+
+    // MESSAGE LOGIC
+    socket.on('msg-out', (payload) => {
+        const sender = users.get(socket.username);
+        const target = users.get(payload.to.toLowerCase().trim());
+        if (target && target.blocked.has(sender.displayName)) return; // Blocked check
+
+        const mId = 'm_' + Date.now();
+        const data = { id: mId, from: sender.displayName, fromSlug: socket.username, text: payload.text, file: payload.file, type: payload.type };
+
+        if (payload.type === 'group') {
+            io.to(payload.to).emit('msg-in', { ...data, channel: payload.to });
+        } else if (target) {
+            io.to(target.socketId).emit('msg-in', data);
+            socket.emit('msg-status', { id: mId, status: 'delivered' });
+        }
+    });
+
+    socket.on('msg-seen', ({ mId, toSlug }) => {
+        const sender = users.get(toSlug);
+        if (sender) io.to(sender.socketId).emit('msg-status', { id: mId, status: 'read' });
     });
 });
 
-server.listen(process.env.PORT || 3000, () => console.log("Nexus Ultimate Online"));
+server.listen(process.env.PORT || 3000);
