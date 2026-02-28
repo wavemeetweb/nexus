@@ -10,78 +10,81 @@ app.use(express.static(__dirname));
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 
-// State Management
-const users = new Map(); // username -> {socketId, displayName, friends, requests, blocked}
-const groups = new Map(); // groupId -> {name, members: Set}
+// State: username -> { socketId, displayName, friends, requests, blocked }
+const users = new Map(); 
+// State: groupId -> { name, members }
+const groups = new Map();
 
 io.on('connection', (socket) => {
+    // --- AUTH ---
     socket.on('nexus-auth', (username) => {
         if (!username) return;
         const lowerName = username.toLowerCase().trim();
-        
         if (!users.has(lowerName)) {
-            users.set(lowerName, { 
-                socketId: socket.id, 
-                displayName: username,
-                friends: new Set(), 
-                requests: new Set(),
-                blocked: new Set() 
-            });
+            users.set(lowerName, { socketId: socket.id, displayName: username, friends: new Set(), requests: new Set(), blocked: new Set() });
         } else {
             users.get(lowerName).socketId = socket.id;
-            users.get(lowerName).displayName = username;
         }
         socket.username = lowerName;
         const data = users.get(lowerName);
-        
-        socket.emit('auth-success', {
-            friends: Array.from(data.friends),
-            requests: Array.from(data.requests),
-            blocked: Array.from(data.blocked),
-            groups: [] // Add group management here later
+        socket.emit('auth-success', { 
+            friends: Array.from(data.friends), 
+            requests: Array.from(data.requests), 
+            blocked: Array.from(data.blocked) 
         });
     });
 
-    // --- WEBRTC SIGNALING (For Voice/Video) ---
-    socket.on('voice-video-offer', ({ to, offer }) => {
+    // --- SEARCH ---
+    socket.on('find-user', (searchName) => {
+        const target = searchName.toLowerCase().trim();
+        const results = [];
+        for (const [lowerName, userData] of users.entries()) {
+            if (lowerName.includes(target) && lowerName !== socket.username) {
+                results.push({ username: userData.displayName });
+            }
+        }
+        socket.emit(results.length > 0 ? 'users-found' : 'users-not-found', results);
+    });
+
+    // --- MESSAGING ---
+    socket.on('send-msg', ({ to, text }) => {
         const target = users.get(to.toLowerCase().trim());
         if (target) {
-            io.to(target.socketId).emit('voice-video-offer', { from: socket.username, offer });
+            io.to(target.socketId).emit('receive-msg', { from: users.get(socket.username).displayName, text });
+            socket.emit('msg-delivered', { to, text });
         }
     });
 
-    socket.on('voice-video-answer', ({ to, answer }) => {
+    // --- GROUPS ---
+    socket.on('create-group', (groupName) => {
+        const gId = 'grp_' + Date.now();
+        groups.set(gId, { name: groupName, members: new Set([socket.username]) });
+        socket.join(gId);
+        socket.emit('group-list-update', Array.from(groups).map(([id, g]) => ({ id, name: g.name })));
+    });
+
+    socket.on('send-group-msg', ({ groupId, text }) => {
+        io.to(groupId).emit('receive-group-msg', { groupId, from: users.get(socket.username).displayName, text });
+    });
+
+    // --- CALLING (WebRTC Signaling) ---
+    socket.on('call-offer', ({ to, offer }) => {
         const target = users.get(to.toLowerCase().trim());
-        if (target) {
-            io.to(target.socketId).emit('voice-video-answer', { from: socket.username, answer });
-        }
+        if (target) io.to(target.socketId).emit('call-offer', { from: users.get(socket.username).displayName, offer });
+    });
+
+    socket.on('call-answer', ({ to, answer }) => {
+        const target = users.get(to.toLowerCase().trim());
+        if (target) io.to(target.socketId).emit('call-answer', { answer });
     });
 
     socket.on('ice-candidate', ({ to, candidate }) => {
         const target = users.get(to.toLowerCase().trim());
-        if (target) {
-            io.to(target.socketId).emit('ice-candidate', { from: socket.username, candidate });
-        }
+        if (target) io.to(target.socketId).emit('ice-candidate', { candidate });
     });
 
-    // --- GROUP MESSAGING ---
-    socket.on('create-group', (groupName) => {
-        const groupId = 'group_' + Date.now();
-        groups.set(groupId, { name: groupName, members: new Set([socket.username]) });
-        socket.join(groupId);
-        socket.emit('group-created', { groupId, name: groupName });
-    });
-
-    socket.on('send-group-msg', ({ groupId, text }) => {
-        io.to(groupId).emit('receive-group-msg', { 
-            groupId, 
-            from: socket.username, 
-            text 
-        });
-    });
-
-    // ... (keep previous auth, block, find-user logic)
+    socket.on('disconnect', () => console.log("User Out"));
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Nexus Engine Running on ${PORT}`));
+server.listen(PORT, () => console.log(`Engine running on ${PORT}`));
