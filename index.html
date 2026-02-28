@@ -20,7 +20,9 @@
             #sidebar { width: 100%; position: absolute; inset: 0; }
             #chat-main { width: 100%; position: absolute; inset: 0; transform: translateX(100%); }
             body.in-chat #chat-main { transform: translateX(0); }
+            .mobile-only { display: block !important; }
         }
+        .mobile-only { display: none; }
 
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 500; backdrop-filter: blur(10px); }
         .modal { background: var(--card); padding: 25px; border-radius: 24px; width: 92%; max-width: 400px; border: 1px solid var(--border); }
@@ -159,12 +161,17 @@
                 const d = document.createElement('div');
                 d.style.padding = "15px"; d.style.display="flex"; d.style.alignItems="center"; d.style.gap="10px"; d.style.cursor="pointer";
                 d.innerHTML = `<div class="av" style="width:35px; height:35px; font-size:12px;">${item.name[0].toUpperCase()}</div><b>${item.name}</b>`;
+                
+                // Click logic for Mobile and Desktop
                 d.onclick = () => {
-                    activeTarget = item.id; isGroup = (item.type === 'group');
+                    activeTarget = item.id; 
+                    isGroup = (item.type === 'group');
                     document.getElementById('active-title').innerText = item.name;
                     document.getElementById('call-tools').style.display = isGroup ? 'none' : 'flex';
-                    document.body.classList.add('in-chat');
                     document.getElementById('messages').innerHTML = "";
+                    
+                    document.body.classList.add('in-chat'); // Slides chat in on mobile
+                    document.getElementById('msg-in').focus(); // Focuses keyboard on mobile
                 };
                 list.appendChild(d);
             });
@@ -203,8 +210,8 @@
         function renderMsg(s, t, side, mid, audio, file) {
             const d = document.createElement('div'); d.className = `bubble ${side}`; d.setAttribute('data-id', mid);
             let body = t || "";
-            if(audio) body = `<button class="btn" onclick="new Audio('${audio}').play()" style="margin:0; padding:5px 10px; width:auto;"><i data-lucide="play"></i> Voice Note</button>`;
-            if(file) body = `<a href="${file.url}" download="${file.name}" style="color:var(--text); text-decoration:underline;">📄 ${file.name}</a>`;
+            if(audio) body = `<button class="btn" onclick="new Audio('${audio}').play()" style="margin:0; padding:5px 10px; width:auto; background:var(--card); color:var(--text); border:1px solid var(--border);"><i data-lucide="play"></i> Voice Note</button>`;
+            if(file) body = `<a href="${file.url}" download="${file.name}" style="color:white; text-decoration:underline;">📄 ${file.name}</a>`;
             
             d.innerHTML = `<small style="display:block; opacity:0.5; font-size:10px;">${s}</small>${body}${side==='sent'?'<span class="status">✓</span>':''}`;
             document.getElementById('messages').appendChild(d);
