@@ -8,8 +8,10 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         :root { --bg: #0b0e14; --side: #151a21; --p: #6366f1; --card: #1e2430; --text: #e2e8f0; --dim: #64748b; --border: #2a313c; --danger: #ef4444; }
+        body.light-mode { --bg: #ffffff; --side: #f1f5f9; --p: #4f46e5; --card: #f8fafc; --text: #0f172a; --dim: #94a3b8; --border: #e2e8f0; }
+        
         * { margin:0; padding:0; box-sizing:border-box; font-family: -apple-system, system-ui, sans-serif; }
-        body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
+        body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; transition: 0.3s; }
 
         #sidebar { width: 340px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: 0.3s; z-index: 10; }
         #chat-main { flex: 1; display: flex; flex-direction: column; position: relative; transition: 0.3s; background: var(--bg); }
@@ -22,7 +24,7 @@
 
         .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 500; backdrop-filter: blur(10px); }
         .modal { background: var(--card); padding: 25px; border-radius: 24px; width: 92%; max-width: 400px; border: 1px solid var(--border); }
-        input, textarea { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); color: white; margin-top: 10px; outline: none; }
+        input, textarea { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-top: 10px; outline: none; }
         .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; }
 
         .av { width: 40px; height: 40px; border-radius: 12px; background: var(--p); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; overflow: hidden; object-fit: cover; }
@@ -63,6 +65,12 @@
             </div>
             <input type="text" id="set-name" placeholder="Display Name">
             <textarea id="set-bio" placeholder="Bio..."></textarea>
+            
+            <label style="display:flex; justify-content:space-between; margin-top:15px; align-items:center;">
+                Dark Mode
+                <input type="checkbox" id="theme-toggle" onchange="toggleTheme()">
+            </label>
+
             <button class="btn" style="background:var(--p); color:white" onclick="saveProfile()">Save</button>
             <button class="btn" style="background:transparent; color:var(--dim)" onclick="closeModals()">Close</button>
         </div>
@@ -72,8 +80,9 @@
         <div class="modal">
             <h3>New Group</h3>
             <input type="text" id="grp-name" placeholder="Group Name">
-            <div id="grp-list" style="max-height:150px; overflow-y:auto; margin-top:10px;"></div>
+            <div id="grp-list" style="max-height:150px; overflow-y:auto; margin-top:10px; border:1px solid var(--border); padding:10px; border-radius:12px;"></div>
             <button class="btn" style="background:var(--p); color:white" onclick="createGroup()">Create</button>
+            <button class="btn" style="background:transparent; color:var(--dim)" onclick="closeModals()">Cancel</button>
         </div>
     </div>
 
@@ -125,7 +134,7 @@
     <script>
         lucide.createIcons();
         const socket = io('https://nexus-w4w9.onrender.com'); // UPDATE WITH YOUR RENDER URL
-        let activeTarget = "", isGroup = false, localPic = null, mediaRecorder, audioChunks = [], pc = null, localStream = null;
+        let activeTarget = "", isGroup = false, localPic = null, mediaRecorder, audioChunks = [], pc = null, localStream = null, currentFriends = [];
 
         function login() { 
             const n = document.getElementById('auth-in').value.trim(); 
@@ -134,13 +143,14 @@
 
         socket.on('ui-sync', (data) => {
             document.getElementById('my-name-ui').innerText = data.profile.name;
+            currentFriends = data.friends;
             const av = document.getElementById('my-av-ui');
             if(data.profile.pic) { av.innerHTML = `<img src="${data.profile.pic}" style="width:100%; height:100%; object-fit:cover;">`; localPic = data.profile.pic; }
             else { av.innerText = data.profile.name[0].toUpperCase(); }
 
             const pList = document.getElementById('pending-list'); pList.innerHTML = "";
             data.pending.forEach(p => {
-                pList.innerHTML += `<div style="padding:10px; background:rgba(99,102,241,0.1); display:flex; justify-content:space-between; font-size:12px;"><span>Request: ${p}</span><button onclick="socket.emit('req-accept','${p}')" style="background:var(--p); color:white; border:none; padding:2px 5px; border-radius:4px;">Accept</button></div>`;
+                pList.innerHTML += `<div style="padding:10px; background:rgba(99,102,241,0.1); display:flex; justify-content:space-between; font-size:12px;"><span>Req: ${p}</span><button onclick="socket.emit('req-accept','${p}')" style="background:var(--p); color:white; border:none; padding:2px 5px; border-radius:4px;">Accept</button></div>`;
             });
 
             const list = document.getElementById('main-list'); list.innerHTML = "";
@@ -159,6 +169,17 @@
                 list.appendChild(d);
             });
         });
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+            localStorage.setItem('theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+        }
+
+        // Initialize Theme
+        if (localStorage.getItem('theme') === 'light') {
+            document.body.classList.add('light-mode');
+            document.getElementById('theme-toggle').checked = true;
+        }
 
         function send() {
             const t = document.getElementById('msg-in').value.trim();
@@ -183,7 +204,7 @@
             const d = document.createElement('div'); d.className = `bubble ${side}`; d.setAttribute('data-id', mid);
             let body = t || "";
             if(audio) body = `<button class="btn" onclick="new Audio('${audio}').play()" style="margin:0; padding:5px 10px; width:auto;"><i data-lucide="play"></i> Voice Note</button>`;
-            if(file) body = `<a href="${file.url}" download="${file.name}" style="color:white; text-decoration:underline;">📄 ${file.name}</a>`;
+            if(file) body = `<a href="${file.url}" download="${file.name}" style="color:var(--text); text-decoration:underline;">📄 ${file.name}</a>`;
             
             d.innerHTML = `<small style="display:block; opacity:0.5; font-size:10px;">${s}</small>${body}${side==='sent'?'<span class="status">✓</span>':''}`;
             document.getElementById('messages').appendChild(d);
@@ -277,9 +298,7 @@
         }
         function openGroupModal() {
             const l = document.getElementById('grp-list'); l.innerHTML = "";
-            socket.emit('get-friends', (friends) => { // You may need to implement this handler on server or rely on ui-sync data
-                friends.forEach(f => l.innerHTML += `<label><input type="checkbox" value="${f}" class="g-chk"> ${f}</label><br>`);
-            });
+            currentFriends.forEach(f => l.innerHTML += `<label style="display:flex; justify-content:space-between; padding:5px 0;"><input type="checkbox" value="${f}" class="g-chk"> ${f}</label>`);
             document.getElementById('modal-group').style.display='flex';
         }
         function createGroup() {
