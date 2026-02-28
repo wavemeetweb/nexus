@@ -1,3 +1,7 @@
+/**
+ * NEXUS CORE ENGINE - Professional v3.0
+ * Handles: WebRTC Signaling, Group State, and Relationship Logic
+ */
 const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
@@ -8,83 +12,141 @@ app.use(cors());
 app.use(express.static(__dirname));
 
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, { 
+    cors: { origin: "*", methods: ["GET", "POST"] },
+    pingTimeout: 60000 
+});
 
-// State: username -> { socketId, displayName, friends, requests, blocked }
-const users = new Map(); 
-// State: groupId -> { name, members }
-const groups = new Map();
+// GLOBAL STATE
+const users = new Map(); // username -> { socketId, displayName, friends, pending, blocked }
+const groups = new Map(); // groupId -> { name, members: Set, owner }
+
+// HELPER: Broadcast Relationship Update
+const syncUser = (username) => {
+    const data = users.get(username.toLowerCase());
+    if (data && data.socketId) {
+        io.to(data.socketId).emit('sync-state', {
+            friends: Array.from(data.friends),
+            pending: Array.from(data.pending),
+            blocked: Array.from(data.blocked),
+            groups: getGroupsForUser(username)
+        });
+    }
+};
+
+const getGroupsForUser = (username) => {
+    return Array.from(groups).filter(([id, g]) => g.members.has(username.toLowerCase()))
+        .map(([id, g]) => ({ id, name: g.name }));
+};
 
 io.on('connection', (socket) => {
-    // --- AUTH ---
+    console.log(`Connection established: ${socket.id}`);
+
+    // --- AUTHENTICATION & INITIALIZATION ---
     socket.on('nexus-auth', (username) => {
         if (!username) return;
-        const lowerName = username.toLowerCase().trim();
-        if (!users.has(lowerName)) {
-            users.set(lowerName, { socketId: socket.id, displayName: username, friends: new Set(), requests: new Set(), blocked: new Set() });
+        const normalized = username.toLowerCase().trim();
+        
+        if (!users.has(normalized)) {
+            users.set(normalized, { 
+                socketId: socket.id, 
+                displayName: username,
+                friends: new Set(), 
+                pending: new Set(),
+                blocked: new Set() 
+            });
         } else {
-            users.get(lowerName).socketId = socket.id;
+            users.get(normalized).socketId = socket.id;
         }
-        socket.username = lowerName;
-        const data = users.get(lowerName);
-        socket.emit('auth-success', { 
-            friends: Array.from(data.friends), 
-            requests: Array.from(data.requests), 
-            blocked: Array.from(data.blocked) 
-        });
+        
+        socket.username = normalized;
+        syncUser(normalized);
     });
 
-    // --- SEARCH ---
-    socket.on('find-user', (searchName) => {
-        const target = searchName.toLowerCase().trim();
-        const results = [];
-        for (const [lowerName, userData] of users.entries()) {
-            if (lowerName.includes(target) && lowerName !== socket.username) {
-                results.push({ username: userData.displayName });
+    // --- SOCIAL & RELATIONSHIP SYSTEM ---
+    socket.on('send-friend-request', (targetName) => {
+        const target = targetName.toLowerCase().trim();
+        const targetData = users.get(target);
+        
+        if (targetData && target !== socket.username && !targetData.blocked.has(socket.username)) {
+            targetData.pending.add(socket.username);
+            syncUser(target);
+            socket.emit('notification', { type: 'success', text: `Request sent to ${targetName}` });
+        } else {
+            socket.emit('notification', { type: 'error', text: 'User not found or unavailable' });
+        }
+    });
+
+    socket.on('accept-friend', (friend) => {
+        const user = users.get(socket.username);
+        const peer = users.get(friend.toLowerCase());
+        if (user && peer) {
+            user.pending.delete(friend.toLowerCase());
+            user.friends.add(friend.toLowerCase());
+            peer.friends.add(socket.username);
+            syncUser(socket.username);
+            syncUser(friend);
+        }
+    });
+
+    socket.on('block-user', (target) => {
+        const user = users.get(socket.username);
+        if (user) {
+            user.blocked.add(target.toLowerCase());
+            user.friends.delete(target.toLowerCase());
+            syncUser(socket.username);
+        }
+    });
+
+    // --- GROUP SYSTEM ---
+    socket.on('create-group', (groupName) => {
+        const id = 'grp_' + Date.now();
+        groups.set(id, { name: groupName, members: new Set([socket.username]), owner: socket.username });
+        socket.join(id);
+        syncUser(socket.username);
+    });
+
+    socket.on('join-group', (groupId) => {
+        if (groups.has(groupId)) {
+            groups.get(groupId).members.add(socket.username);
+            socket.join(groupId);
+            syncUser(socket.username);
+        }
+    });
+
+    // --- MESSAGING (Private & Group) ---
+    socket.on('send-msg', ({ to, text, isGroupMsg }) => {
+        const fromName = users.get(socket.username).displayName;
+        if (isGroupMsg) {
+            io.to(to).emit('receive-msg', { from: fromName, text, groupId: to });
+        } else {
+            const target = users.get(to.toLowerCase());
+            if (target && !target.blocked.has(socket.username)) {
+                io.to(target.socketId).emit('receive-msg', { from: fromName, text });
             }
         }
-        socket.emit(results.length > 0 ? 'users-found' : 'users-not-found', results);
     });
 
-    // --- MESSAGING ---
-    socket.on('send-msg', ({ to, text }) => {
-        const target = users.get(to.toLowerCase().trim());
-        if (target) {
-            io.to(target.socketId).emit('receive-msg', { from: users.get(socket.username).displayName, text });
-            socket.emit('msg-delivered', { to, text });
-        }
+    // --- WEBRTC SIGNALING ENGINE ---
+    socket.on('signal-offer', ({ to, offer }) => {
+        const target = users.get(to.toLowerCase());
+        if (target) io.to(target.socketId).emit('signal-offer', { from: socket.username, offer });
     });
 
-    // --- GROUPS ---
-    socket.on('create-group', (groupName) => {
-        const gId = 'grp_' + Date.now();
-        groups.set(gId, { name: groupName, members: new Set([socket.username]) });
-        socket.join(gId);
-        socket.emit('group-list-update', Array.from(groups).map(([id, g]) => ({ id, name: g.name })));
+    socket.on('signal-answer', ({ to, answer }) => {
+        const target = users.get(to.toLowerCase());
+        if (target) io.to(target.socketId).emit('signal-answer', { answer });
     });
 
-    socket.on('send-group-msg', ({ groupId, text }) => {
-        io.to(groupId).emit('receive-group-msg', { groupId, from: users.get(socket.username).displayName, text });
+    socket.on('signal-ice', ({ to, candidate }) => {
+        const target = users.get(to.toLowerCase());
+        if (target) io.to(target.socketId).emit('signal-ice', { candidate });
     });
 
-    // --- CALLING (WebRTC Signaling) ---
-    socket.on('call-offer', ({ to, offer }) => {
-        const target = users.get(to.toLowerCase().trim());
-        if (target) io.to(target.socketId).emit('call-offer', { from: users.get(socket.username).displayName, offer });
+    socket.on('disconnect', () => {
+        console.log(`User ${socket.username} offline`);
     });
-
-    socket.on('call-answer', ({ to, answer }) => {
-        const target = users.get(to.toLowerCase().trim());
-        if (target) io.to(target.socketId).emit('call-answer', { answer });
-    });
-
-    socket.on('ice-candidate', ({ to, candidate }) => {
-        const target = users.get(to.toLowerCase().trim());
-        if (target) io.to(target.socketId).emit('ice-candidate', { candidate });
-    });
-
-    socket.on('disconnect', () => console.log("User Out"));
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Engine running on ${PORT}`));
+server.listen(PORT, () => console.log(`[SYSTEM] Nexus Server running on Port ${PORT}`));
