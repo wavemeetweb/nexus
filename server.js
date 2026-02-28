@@ -1,6 +1,6 @@
 /**
- * NEXUS CORE ENGINE - Professional v3.0
- * Handles: WebRTC Signaling, Group State, and Relationship Logic
+ * NEXUS CORE ENGINE v4.0 - PRO
+ * Handles: Persistent Groups, Multi-stage Relationships, and WebRTC
  */
 const express = require('express');
 const http = require('http');
@@ -13,140 +13,149 @@ app.use(express.static(__dirname));
 
 const server = http.createServer(app);
 const io = new Server(server, { 
-    cors: { origin: "*", methods: ["GET", "POST"] },
-    pingTimeout: 60000 
+    cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// GLOBAL STATE
-const users = new Map(); // username -> { socketId, displayName, friends, pending, blocked }
-const groups = new Map(); // groupId -> { name, members: Set, owner }
+// MEMORY STORE (In production, replace with MongoDB/Redis)
+const users = new Map(); // key: lowercase_name -> { displayName, socketId, friends, pending, blocked }
+const groups = new Map(); // key: groupId -> { name, members: Set }
 
-// HELPER: Broadcast Relationship Update
-const syncUser = (username) => {
-    const data = users.get(username.toLowerCase());
-    if (data && data.socketId) {
-        io.to(data.socketId).emit('sync-state', {
-            friends: Array.from(data.friends),
-            pending: Array.from(data.pending),
-            blocked: Array.from(data.blocked),
-            groups: getGroupsForUser(username)
-        });
-    }
-};
+// --- CORE UTILITIES ---
+const getInternalData = (username) => users.get(username.toLowerCase().trim());
 
-const getGroupsForUser = (username) => {
-    return Array.from(groups).filter(([id, g]) => g.members.has(username.toLowerCase()))
+const syncClientUI = (username) => {
+    const user = getInternalData(username);
+    if (!user || !user.socketId) return;
+
+    // Filter groups where user is a member
+    const userGroups = Array.from(groups).filter(([id, g]) => g.members.has(username.toLowerCase()))
         .map(([id, g]) => ({ id, name: g.name }));
+
+    io.to(user.socketId).emit('ui-state-update', {
+        friends: Array.from(user.friends),
+        pending: Array.from(user.pending),
+        blocked: Array.from(user.blocked),
+        groups: userGroups
+    });
 };
 
 io.on('connection', (socket) => {
-    console.log(`Connection established: ${socket.id}`);
+    console.log(`Socket Connected: ${socket.id}`);
 
-    // --- AUTHENTICATION & INITIALIZATION ---
+    // --- 1. AUTHENTICATION & IDENTITY ---
     socket.on('nexus-auth', (username) => {
         if (!username) return;
-        const normalized = username.toLowerCase().trim();
+        const slug = username.toLowerCase().trim();
         
-        if (!users.has(normalized)) {
-            users.set(normalized, { 
-                socketId: socket.id, 
+        if (!users.has(slug)) {
+            users.set(slug, {
+                socketId: socket.id,
                 displayName: username,
-                friends: new Set(), 
+                friends: new Set(),
                 pending: new Set(),
-                blocked: new Set() 
+                blocked: new Set()
             });
         } else {
-            users.get(normalized).socketId = socket.id;
+            users.get(slug).socketId = socket.id;
         }
         
-        socket.username = normalized;
-        syncUser(normalized);
+        socket.username = slug;
+        syncClientUI(slug);
     });
 
-    // --- SOCIAL & RELATIONSHIP SYSTEM ---
-    socket.on('send-friend-request', (targetName) => {
-        const target = targetName.toLowerCase().trim();
-        const targetData = users.get(target);
+    // --- 2. FRIEND REQUEST SYSTEM ---
+    socket.on('friend-request-send', (targetName) => {
+        const targetSlug = targetName.toLowerCase().trim();
+        const targetData = users.get(targetSlug);
         
-        if (targetData && target !== socket.username && !targetData.blocked.has(socket.username)) {
-            targetData.pending.add(socket.username);
-            syncUser(target);
-            socket.emit('notification', { type: 'success', text: `Request sent to ${targetName}` });
-        } else {
-            socket.emit('notification', { type: 'error', text: 'User not found or unavailable' });
+        if (!targetData) return socket.emit('error-msg', "User not found.");
+        if (targetSlug === socket.username) return socket.emit('error-msg', "Can't add yourself.");
+        if (targetData.blocked.has(socket.username)) return socket.emit('error-msg', "User unavailable.");
+
+        // Add to target's pending list
+        targetData.pending.add(users.get(socket.username).displayName);
+        syncClientUI(targetSlug);
+        socket.emit('success-msg', `Request sent to ${targetName}`);
+    });
+
+    socket.on('friend-request-accept', (requesterName) => {
+        const me = users.get(socket.username);
+        const peerSlug = requesterName.toLowerCase().trim();
+        const peer = users.get(peerSlug);
+
+        if (me && peer) {
+            me.pending.delete(requesterName); // Use the Display Name stored in set
+            me.friends.add(peer.displayName);
+            peer.friends.add(me.displayName);
+            
+            syncClientUI(socket.username);
+            syncClientUI(peerSlug);
         }
     });
 
-    socket.on('accept-friend', (friend) => {
-        const user = users.get(socket.username);
-        const peer = users.get(friend.toLowerCase());
-        if (user && peer) {
-            user.pending.delete(friend.toLowerCase());
-            user.friends.add(friend.toLowerCase());
-            peer.friends.add(socket.username);
-            syncUser(socket.username);
-            syncUser(friend);
-        }
+    // --- 3. GROUP MANAGEMENT ---
+    socket.on('group-create', (groupName) => {
+        const gId = 'group_' + Math.random().toString(36).substr(2, 9);
+        groups.set(gId, {
+            name: groupName,
+            members: new Set([socket.username])
+        });
+        socket.join(gId);
+        syncClientUI(socket.username);
     });
 
-    socket.on('block-user', (target) => {
-        const user = users.get(socket.username);
-        if (user) {
-            user.blocked.add(target.toLowerCase());
-            user.friends.delete(target.toLowerCase());
-            syncUser(socket.username);
-        }
-    });
-
-    // --- GROUP SYSTEM ---
-    socket.on('create-group', (groupName) => {
-        const id = 'grp_' + Date.now();
-        groups.set(id, { name: groupName, members: new Set([socket.username]), owner: socket.username });
-        socket.join(id);
-        syncUser(socket.username);
-    });
-
-    socket.on('join-group', (groupId) => {
-        if (groups.has(groupId)) {
-            groups.get(groupId).members.add(socket.username);
-            socket.join(groupId);
-            syncUser(socket.username);
-        }
-    });
-
-    // --- MESSAGING (Private & Group) ---
-    socket.on('send-msg', ({ to, text, isGroupMsg }) => {
-        const fromName = users.get(socket.username).displayName;
-        if (isGroupMsg) {
-            io.to(to).emit('receive-msg', { from: fromName, text, groupId: to });
-        } else {
-            const target = users.get(to.toLowerCase());
-            if (target && !target.blocked.has(socket.username)) {
-                io.to(target.socketId).emit('receive-msg', { from: fromName, text });
+    // --- 4. BLOCKING & RESTRICTION ---
+    socket.on('user-block', (name) => {
+        const me = users.get(socket.username);
+        const targetSlug = name.toLowerCase().trim();
+        if (me) {
+            me.friends.delete(name);
+            me.blocked.add(name);
+            syncClientUI(socket.username);
+            
+            // Remove me from their friends too
+            const peer = users.get(targetSlug);
+            if (peer) {
+                peer.friends.delete(me.displayName);
+                syncClientUI(targetSlug);
             }
         }
     });
 
-    // --- WEBRTC SIGNALING ENGINE ---
-    socket.on('signal-offer', ({ to, offer }) => {
-        const target = users.get(to.toLowerCase());
-        if (target) io.to(target.socketId).emit('signal-offer', { from: socket.username, offer });
+    // --- 5. UNIFIED MESSAGING ---
+    socket.on('message-outgoing', ({ to, text, type }) => {
+        const senderDisplay = users.get(socket.username).displayName;
+        
+        if (type === 'group') {
+            io.to(to).emit('message-incoming', { from: senderDisplay, text, channel: to, type: 'group' });
+        } else {
+            const target = users.get(to.toLowerCase().trim());
+            if (target && !target.blocked.has(socket.username)) {
+                io.to(target.socketId).emit('message-incoming', { from: senderDisplay, text, type: 'dm' });
+            }
+        }
     });
 
-    socket.on('signal-answer', ({ to, answer }) => {
-        const target = users.get(to.toLowerCase());
-        if (target) io.to(target.socketId).emit('signal-answer', { answer });
+    // --- 6. CALL SIGNALING ---
+    socket.on('signal-offer', (data) => {
+        const t = users.get(data.to.toLowerCase().trim());
+        if (t) io.to(t.socketId).emit('signal-offer', { from: users.get(socket.username).displayName, offer: data.offer });
     });
 
-    socket.on('signal-ice', ({ to, candidate }) => {
-        const target = users.get(to.toLowerCase());
-        if (target) io.to(target.socketId).emit('signal-ice', { candidate });
+    socket.on('signal-answer', (data) => {
+        const t = users.get(data.to.toLowerCase().trim());
+        if (t) io.to(t.socketId).emit('signal-answer', { answer: data.answer });
+    });
+
+    socket.on('signal-ice', (data) => {
+        const t = users.get(data.to.toLowerCase().trim());
+        if (t) io.to(t.socketId).emit('signal-ice', { candidate: data.candidate });
     });
 
     socket.on('disconnect', () => {
-        console.log(`User ${socket.username} offline`);
+        console.log(`User ${socket.username} disconnected.`);
     });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`[SYSTEM] Nexus Server running on Port ${PORT}`));
+server.listen(PORT, () => console.log(`[CORE] Listening on Port ${PORT}`));
