@@ -3,234 +3,299 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus Zenith Prime</title>
+    <title>Nexus Zenith</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <style>
-        :root { --bg: #0b0e14; --side: #151a21; --p: #6366f1; --card: #1e2430; --text: #e2e8f0; --dim: #64748b; --border: #2a313c; --danger: #ef4444; }
-        * { margin:0; padding:0; box-sizing:border-box; font-family: sans-serif; }
+        :root { --bg: #050505; --accent: #6366f1; --glass: rgba(255, 255, 255, 0.03); --border: rgba(255, 255, 255, 0.1); --text: #f8fafc; }
+        * { margin:0; padding:0; box-sizing:border-box; font-family: 'Outfit', sans-serif; }
         body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
         
-        #sidebar { width: 320px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-        #chat-main { flex: 1; display: flex; flex-direction: column; position: relative; }
-
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(10px); }
-        .modal { background: var(--card); padding: 25px; border-radius: 20px; width: 90%; max-width: 380px; border: 1px solid var(--border); }
+        /* Modern Glass UI */
+        .glass { background: var(--glass); backdrop-filter: blur(15px); border: 1px solid var(--border); border-radius: 20px; }
         
-        input, textarea { width: 100%; padding: 12px; margin-top: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: white; outline: none; }
-        .btn { padding: 10px 20px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; }
-        .btn-p { background: var(--p); color: white; }
-
-        #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
-        .bubble { padding: 12px; border-radius: 15px; max-width: 70%; position: relative; cursor: context-menu; }
-        .sent { align-self: flex-end; background: var(--p); border-bottom-right-radius: 2px; }
-        .recv { align-self: flex-start; background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 2px; }
+        #sidebar { width: 320px; border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px; }
+        #chat-window { flex: 1; display: flex; flex-direction: column; position: relative; }
         
-        #ctx-menu { position: fixed; background: var(--card); border: 1px solid var(--border); border-radius: 10px; display: none; z-index: 2000; overflow: hidden; box-shadow: 0 5px 20px rgba(0,0,0,0.5); }
-        #ctx-menu button { display: block; width: 100%; padding: 10px 20px; background: none; border: none; color: white; text-align: left; cursor: pointer; font-size: 13px; }
-        #ctx-menu button:hover { background: var(--p); }
+        .nav-item { padding: 15px; border-radius: 15px; margin-bottom: 8px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 12px; }
+        .nav-item:hover { background: var(--glass); }
+        .nav-item.active { background: var(--accent); color: white; }
 
-        .deleted { opacity: 0.5; font-style: italic; font-size: 12px; }
+        #messages { flex: 1; overflow-y: auto; padding: 30px; display: flex; flex-direction: column; gap: 15px; }
+        .bubble { padding: 12px 18px; border-radius: 20px; max-width: 65%; font-size: 15px; line-height: 1.5; }
+        .sent { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
+        .recv { align-self: flex-start; background: var(--glass); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+
+        /* Login Overlay */
+        #auth-screen { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; }
+        .login-card { width: 350px; padding: 40px; text-align: center; }
+
+        /* Call Screen */
+        #call-ui { position: fixed; inset: 0; background: #000; z-index: 10000; display: none; flex-direction: column; }
+        #remote-v { width: 100%; height: 100%; object-fit: cover; }
+        #local-v { position: absolute; top: 30px; right: 30px; width: 120px; height: 180px; border-radius: 15px; border: 2px solid var(--accent); object-fit: cover; }
+
+        /* Modals */
+        .modal-wrap { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 5000; }
+        .modal-body { width: 400px; padding: 30px; }
+        
+        input { background: var(--glass); border: 1px solid var(--border); color: white; padding: 12px; border-radius: 10px; width: 100%; margin: 10px 0; outline: none; }
+        button { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="modal-settings" class="overlay">
-        <div class="modal">
-            <h3>Profile Settings</h3>
-            <input id="set-display" placeholder="Display Name">
-            <textarea id="set-bio" placeholder="Bio"></textarea>
-            <input id="set-ig" placeholder="Instagram URL">
-            <button class="btn btn-p" style="width:100%; margin-top:15px;" onclick="saveProfile()">Save</button>
-            <button class="btn" style="width:100%; margin-top:5px; background:none; color:var(--dim)" onclick="closeModals()">Cancel</button>
+    <div id="auth-screen">
+        <div class="glass login-card">
+            <h1 style="letter-spacing: -1px; margin-bottom: 10px;">ZENITH</h1>
+            <p style="color: var(--dim); margin-bottom: 20px;">Secure P2P Nexus</p>
+            <input type="text" id="auth-u" placeholder="Username">
+            <button onclick="login()" style="width: 100%;">Initialize Session</button>
         </div>
-    </div>
-
-    <div id="modal-profile" class="overlay">
-        <div class="modal" id="profile-view"></div>
     </div>
 
     <aside id="sidebar">
-        <div style="padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
-            <b>NEXUS</b>
-            <div style="display:flex; gap:15px; color:var(--dim)">
-                <i data-lucide="settings" onclick="openSettings()" style="cursor:pointer"></i>
-                <i data-lucide="user-plus" onclick="sendReq()" style="cursor:pointer"></i>
-                <i data-lucide="users" onclick="createGrp()" style="cursor:pointer"></i>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+            <h2 id="my-id">...</h2>
+            <div style="display:flex; gap:10px;">
+                <i data-lucide="plus-circle" onclick="toggleModal('m-group')" style="cursor:pointer"></i>
+                <i data-lucide="user-plus" onclick="addFriend()" style="cursor:pointer"></i>
             </div>
         </div>
-        <div id="req-ui" style="display:none; padding:10px; background:var(--p); color:white; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
-            <span id="req-txt"></span>
-            <button onclick="acceptReq()" style="background:white; border:none; padding:2px 8px; border-radius:5px; font-size:10px;">Accept</button>
-        </div>
-        <div id="list" style="flex:1; overflow-y:auto;"></div>
+        <div id="contact-list" style="flex:1; overflow-y:auto;"></div>
     </aside>
 
-    <main id="chat-main">
-        <header style="padding:15px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; background:var(--side);">
-            <h4 id="chat-title" onclick="viewProfile()" style="cursor:pointer">Select a Chat</h4>
-            <div id="admin-ui" style="display:none; gap:15px; color:var(--p)">
-                <i data-lucide="user-plus" onclick="addToGrp()" style="cursor:pointer"></i>
-                <i data-lucide="trash-2" onclick="delGrp()" style="color:var(--danger); cursor:pointer"></i>
+    <main id="chat-window">
+        <header style="padding: 20px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+            <div onclick="openInfo()" style="cursor:pointer">
+                <h3 id="chat-title">Select Contact</h3>
+                <small id="chat-status" style="color: var(--dim)">Offline</small>
+            </div>
+            <div id="call-controls" style="display:none; gap:20px;">
+                <i data-lucide="phone" onclick="initCall('audio')" style="color:var(--accent); cursor:pointer"></i>
+                <i data-lucide="video" onclick="initCall('video')" style="color:var(--accent); cursor:pointer"></i>
             </div>
         </header>
+        
         <div id="messages"></div>
-        <div style="padding:15px; display:flex; gap:10px; background:var(--side);">
-            <label style="cursor:pointer; color:var(--dim)"><i data-lucide="paperclip"></i><input type="file" style="display:none" onchange="sendFile(this)"></label>
-            <input type="text" id="m-in" placeholder="Message..." style="margin:0" onkeypress="if(event.key==='Enter')sendMsg()">
-            <i data-lucide="mic" id="mic" onclick="record()" style="cursor:pointer; color:var(--dim)"></i>
-            <button class="btn btn-p" onclick="sendMsg()"><i data-lucide="send"></i></button>
+
+        <div style="padding: 20px 30px; display: flex; gap: 15px; align-items: center;">
+            <div class="glass" style="flex:1; display:flex; padding:5px 15px; border-radius:100px;">
+                <input type="text" id="msg-input" placeholder="Type a message..." style="border:none; background:transparent; margin:0;" onkeypress="if(event.key==='Enter')send()">
+            </div>
+            <button onclick="send()" style="border-radius: 50%; width: 50px; height: 50px; padding:0; display:grid; place-items:center;"><i data-lucide="send"></i></button>
         </div>
     </main>
 
-    <div id="ctx-menu">
-        <button onclick="delMsg('me')">Delete for me</button>
-        <button id="del-all" style="color:var(--danger)" onclick="delMsg('everyone')">Delete for everyone</button>
+    <div id="call-ui">
+        <video id="remote-v" autoplay playsinline></video>
+        <video id="local-v" autoplay playsinline muted></video>
+        <div style="position:absolute; bottom:50px; left:50%; transform:translateX(-50%); display:flex; gap:20px;">
+            <button onclick="endCall()" style="background:red; border-radius:50%; width:70px; height:70px;"><i data-lucide="phone-off"></i></button>
+        </div>
+    </div>
+
+    <div id="m-info" class="modal-wrap">
+        <div class="glass modal-body">
+            <h2 id="info-name">Group Info</h2>
+            <p id="info-admin" style="color:var(--accent); margin-bottom:20px;"></p>
+            <h4>Members</h4>
+            <div id="info-members" style="margin:15px 0;"></div>
+            <div id="admin-actions" style="display:none;">
+                <input type="text" id="add-member-u" placeholder="Username to add">
+                <button onclick="groupAction('add')" style="width:100%">Add Member</button>
+            </div>
+            <button onclick="toggleModal('m-info')" style="margin-top:20px; background:transparent; color:var(--dim); width:100%">Close</button>
+        </div>
+    </div>
+
+    <div id="m-group" class="modal-wrap">
+        <div class="glass modal-body">
+            <h3>New Group</h3>
+            <input type="text" id="new-grp-name" placeholder="Group Name">
+            <button onclick="createGroup()" style="width:100%">Create</button>
+        </div>
     </div>
 
     <script>
         lucide.createIcons();
-        localforage.config({ name: 'Nexus2026' });
         const socket = io();
-        let myUser = "", activeTarget = "", isGrp = false, selMsgId = null, reqFrom = "";
+        let myU = "", activeTarget = "", isGroup = false, pc, localStream;
 
-        // Init
-        window.onload = () => {
-            myUser = prompt("Username:").toLowerCase().trim();
-            socket.emit('nexus-auth', myUser);
-        };
+        async function login() {
+            const u = document.getElementById('auth-u').value;
+            if(!u) return;
+            myU = u.toLowerCase();
+            socket.emit('auth', u);
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('my-id').innerText = u;
+            renderList();
+        }
 
-        socket.on('auth-confirmed', (d) => { renderSidebar(); });
-
-        // Sidebar & Friends
-        async function renderSidebar() {
-            const f = (await localforage.getItem('friends')) || [];
-            const g = (await localforage.getItem('groups')) || {};
-            const list = document.getElementById('list'); list.innerHTML = "";
-
-            Object.values(g).forEach(group => {
-                const d = document.createElement('div'); d.style.padding="15px"; d.style.borderBottom="1px solid var(--border)"; d.style.cursor="pointer";
-                d.innerHTML = `<small style="color:var(--p)">GROUP</small><br><b>${group.name}</b>`;
-                d.onclick = () => { activeTarget = group.id; isGrp = true; openChat(group.name, group.admin); };
-                list.appendChild(d);
+        async function renderList() {
+            const friends = await localforage.getItem('friends') || [];
+            const grps = await localforage.getItem('groups') || {};
+            const list = document.getElementById('contact-list');
+            list.innerHTML = "";
+            
+            Object.values(grps).forEach(g => {
+                const item = document.createElement('div');
+                item.className = "nav-item";
+                item.innerHTML = `<i data-lucide="users"></i> <b>${g.name}</b>`;
+                item.onclick = () => selectTarget(g.id, g.name, true);
+                list.appendChild(item);
             });
 
-            f.forEach(name => {
-                const d = document.createElement('div'); d.style.padding="15px"; d.style.borderBottom="1px solid var(--border)"; d.style.cursor="pointer";
-                d.innerHTML = `<b>${name}</b>`;
-                d.onclick = () => { activeTarget = name; isGrp = false; openChat(name); };
-                list.appendChild(d);
+            friends.forEach(f => {
+                const item = document.createElement('div');
+                item.className = "nav-item";
+                item.innerHTML = `<i data-lucide="user"></i> <b>${f}</b>`;
+                item.onclick = () => selectTarget(f, f, false);
+                list.appendChild(item);
             });
+            lucide.createIcons();
         }
 
-        // Requests
-        function sendReq() { const t = prompt("Username:"); if(t) socket.emit('friend-req-send', t); }
-        socket.on('friend-req-recv', d => { reqFrom = d.from; document.getElementById('req-ui').style.display='flex'; document.getElementById('req-txt').innerText = `From: ${d.from}`; });
-        async function acceptReq() {
-            socket.emit('friend-req-accept', reqFrom);
-            document.getElementById('req-ui').style.display='none';
-            await saveFriend(reqFrom);
-        }
-        socket.on('friend-req-confirmed', d => saveFriend(d.user));
-        async function saveFriend(name) {
-            const f = (await localforage.getItem('friends')) || [];
-            if(!f.includes(name)) { f.push(name); await localforage.setItem('friends', f); renderSidebar(); }
+        function selectTarget(id, name, group) {
+            activeTarget = id; isGroup = group;
+            document.getElementById('chat-title').innerText = name;
+            document.getElementById('call-controls').style.display = group ? 'none' : 'flex';
+            loadMessages();
         }
 
-        // Messaging
-        async function sendMsg() {
-            const text = document.getElementById('m-in').value; if(!text || !activeTarget) return;
-            const msg = { id: Date.now(), from: myUser, text, side: 'sent' };
-            if(isGrp) socket.emit('group-msg', { groupId: activeTarget, text, id: msg.id });
-            else socket.emit('msg-out', { to: activeTarget, text, id: msg.id });
-            await storeMsg(activeTarget, msg);
-            renderBubble(msg);
-            document.getElementById('m-in').value = "";
+        async function createGroup() {
+            const name = document.getElementById('new-grp-name').value;
+            if(name) socket.emit('grp-create', { name });
+            toggleModal('m-group');
         }
 
-        socket.on('msg-in', async d => {
-            const channel = d.groupId || d.from;
-            const msg = { ...d, side: 'recv' };
-            await storeMsg(channel, msg);
-            if(activeTarget === channel) renderBubble(msg);
+        socket.on('grp-update', async (g) => {
+            const grps = await localforage.getItem('groups') || {};
+            grps[g.id] = g;
+            await localforage.setItem('groups', grps);
+            renderList();
         });
 
-        async function storeMsg(id, m) {
-            const h = (await localforage.getItem(`chat_${id}`)) || [];
+        // Calling Logic (WebRTC)
+        async function initCall(type) {
+            document.getElementById('call-ui').style.display = 'flex';
+            localStream = await navigator.mediaDevices.getUserMedia({ video: type==='video', audio: true });
+            document.getElementById('local-v').srcObject = localStream;
+            
+            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            
+            pc.onicecandidate = e => e.candidate && socket.emit('ice-candidate', { to: activeTarget, candidate: e.candidate });
+            pc.ontrack = e => document.getElementById('remote-v').srcObject = e.streams[0];
+            
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            socket.emit('call-request', { to: activeTarget, type, offer });
+        }
+
+        socket.on('call-made', async (d) => {
+            if(!confirm(`Incoming ${d.type} call from ${d.from}. Accept?`)) return;
+            activeTarget = d.from;
+            document.getElementById('call-ui').style.display = 'flex';
+            localStream = await navigator.mediaDevices.getUserMedia({ video: d.type==='video', audio: true });
+            document.getElementById('local-v').srcObject = localStream;
+            
+            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            
+            pc.onicecandidate = e => e.candidate && socket.emit('ice-candidate', { to: d.from, candidate: e.candidate });
+            pc.ontrack = e => document.getElementById('remote-v').srcObject = e.streams[0];
+            
+            await pc.setRemoteDescription(new RTCSessionDescription(d.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit('call-answer', { to: d.from, answer });
+        });
+
+        socket.on('call-answered', d => pc.setRemoteDescription(new RTCSessionDescription(d.answer)));
+        socket.on('ice-candidate', d => pc.addIceCandidate(new RTCIceCandidate(d.candidate)));
+
+        function endCall() {
+            if(localStream) localStream.getTracks().forEach(t => t.stop());
+            document.getElementById('call-ui').style.display = 'none';
+            if(pc) pc.close();
+        }
+
+        // Group Management UI
+        async function openInfo() {
+            if(!isGroup) return;
+            const grps = await localforage.getItem('groups');
+            const g = grps[activeTarget];
+            document.getElementById('info-name').innerText = g.name;
+            document.getElementById('info-admin').innerText = `Admin: ${g.admin}`;
+            document.getElementById('admin-actions').style.display = (g.admin === myU) ? 'block' : 'none';
+            
+            const mList = document.getElementById('info-members');
+            mList.innerHTML = g.members.map(m => `
+                <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                    <span>${m}</span>
+                    ${g.admin === myU && m !== myU ? `<button onclick="groupAction('kick', '${m}')" style="padding:2px 8px; font-size:10px; background:red;">Kick</button>` : ''}
+                </div>
+            `).join('');
+            toggleModal('m-info');
+        }
+
+        function groupAction(action, target) {
+            const t = target || document.getElementById('add-member-u').value;
+            socket.emit('grp-manage', { action, gid: activeTarget, target: t });
+        }
+
+        // Helper
+        function toggleModal(id) {
+            const m = document.getElementById(id);
+            m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
+        }
+
+        async function send() {
+            const text = document.getElementById('msg-input').value;
+            if(!text) return;
+            const msg = { to: activeTarget, isGroup, text, from: 'Me' };
+            socket.emit('msg-send', msg);
+            await saveMsg(activeTarget, msg);
+            renderBubble(msg);
+            document.getElementById('msg-input').value = "";
+        }
+
+        socket.on('msg-recv', async d => {
+            const channel = d.isGroup ? d.to : d.from;
+            await saveMsg(channel, d);
+            if(activeTarget === channel) renderBubble(d);
+        });
+
+        async function saveMsg(id, m) {
+            const h = await localforage.getItem(`chat_${id}`) || [];
             h.push(m); await localforage.setItem(`chat_${id}`, h);
         }
 
+        async function loadMessages() {
+            document.getElementById('messages').innerHTML = "";
+            const h = await localforage.getItem(`chat_${activeTarget}`) || [];
+            h.forEach(renderBubble);
+        }
+
         function renderBubble(m) {
-            const b = document.createElement('div'); b.className = `bubble ${m.side}`; b.id = `m_${m.id}`;
-            b.innerHTML = m.deleted ? `<span class="deleted">Message deleted</span>` : `<small style="display:block;opacity:0.5;font-size:10px">${m.from}</small>${m.text}`;
-            
-            b.oncontextmenu = (e) => {
-                e.preventDefault(); selMsgId = m.id;
-                const menu = document.getElementById('ctx-menu'); menu.style.display='block';
-                menu.style.top = e.pageY+'px'; menu.style.left = e.pageX+'px';
-                const canDelAll = (m.from === myUser || (isGrp && activeTarget && (async () => {
-                    const g = await localforage.getItem('groups'); return g[activeTarget]?.admin === myUser;
-                })()));
-                document.getElementById('del-all').style.display = 'block'; 
-            };
+            const b = document.createElement('div');
+            b.className = `bubble ${m.from === 'Me' ? 'sent' : 'recv'}`;
+            b.innerHTML = `<small style="display:block; opacity:0.6; font-size:10px;">${m.from}</small>${m.text}`;
             document.getElementById('messages').appendChild(b);
             document.getElementById('messages').scrollTop = 99999;
         }
 
-        // Deletion
-        async function delMsg(mode) {
-            if(mode === 'everyone') socket.emit('msg-delete', { msgId: selMsgId, targetId: activeTarget, isGroup: isGrp });
-            await localDelete(activeTarget, selMsgId, mode === 'everyone');
-            openChat(document.getElementById('chat-title').innerText);
+        async function addFriend() {
+            const f = prompt("Username to add:");
+            if(f) {
+                const friends = await localforage.getItem('friends') || [];
+                if(!friends.includes(f)) friends.push(f);
+                await localforage.setItem('friends', friends);
+                renderList();
+            }
         }
-
-        socket.on('msg-deleted', async d => {
-            await localDelete(d.targetId === myUser ? d.by : d.targetId, d.msgId, true);
-            if(activeTarget === d.targetId || activeTarget === d.by) openChat(document.getElementById('chat-title').innerText);
-        });
-
-        async function localDelete(chatId, mid, everyone) {
-            const h = (await localforage.getItem(`chat_${chatId}`)) || [];
-            const up = h.map(m => m.id == mid ? (everyone ? {...m, text:"", deleted:true} : null) : m).filter(m => m);
-            await localforage.setItem(`chat_${chatId}`, up);
-        }
-
-        // Groups
-        function createGrp() { const n = prompt("Group Name:"); if(n) socket.emit('group-create', { name: n }); }
-        socket.on('group-init', async g => {
-            const grps = (await localforage.getItem('groups')) || {};
-            grps[g.id] = g; await localforage.setItem('groups', grps); renderSidebar();
-        });
-
-        // Profiles
-        function openSettings() { document.getElementById('modal-settings').style.display='flex'; }
-        function closeModals() { document.querySelectorAll('.overlay').forEach(o => o.style.display='none'); }
-        function saveProfile() {
-            socket.emit('update-profile', { display: document.getElementById('set-display').value, bio: document.getElementById('set-bio').value });
-            closeModals();
-        }
-        function viewProfile() { if(!isGrp) socket.emit('get-profile', activeTarget); }
-        socket.on('profile-data', d => {
-            document.getElementById('profile-view').innerHTML = `<h3>${d.display}</h3><p>${d.bio}</p><button class="btn" style="background:var(--danger);color:white;width:100%;margin-top:20px;" onclick="remFriend('${d.user}')">Remove Friend</button>`;
-            document.getElementById('modal-profile').style.display='flex';
-        });
-
-        async function remFriend(n) {
-            const f = (await localforage.getItem('friends')) || [];
-            await localforage.setItem('friends', f.filter(x => x !== n));
-            location.reload();
-        }
-
-        async function openChat(t, admin = null) {
-            document.getElementById('chat-title').innerText = t;
-            document.getElementById('admin-ui').style.display = (admin === myUser) ? 'flex' : 'none';
-            document.getElementById('messages').innerHTML = "";
-            const h = (await localforage.getItem(`chat_${activeTarget}`)) || [];
-            h.forEach(renderBubble);
-        }
-
-        window.onclick = () => document.getElementById('ctx-menu').style.display='none';
     </script>
 </body>
 </html>
