@@ -1,29 +1,33 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
+const path = require('path');
 const cors = require('cors');
 
 const app = express();
 app.use(cors());
+
+// --- FIX FOR 'Cannot GET /' ---
+// This tells Express to serve your index.html and folder files
+app.use(express.static(__dirname)); 
+
 const server = http.createServer(app);
+const io = new Server(server, { 
+    cors: { origin: "*" }, 
+    maxHttpBufferSize: 5e7 // 50MB limit for files/voice
+});
 
-// Allow large files up to 50MB to pass through the router
-const io = new Server(server, { cors: { origin: "*" }, maxHttpBufferSize: 5e7 });
-
-// Map to keep track of who is currently online
-const activeUsers = new Map(); // username -> socket.id
+const activeUsers = new Map(); // username -> socketId
 
 io.on('connection', (socket) => {
-    
-    // User comes online
     socket.on('nexus-auth', (username) => {
         const slug = username.toLowerCase().trim();
         activeUsers.set(slug, socket.id);
         socket.username = slug;
-        socket.emit('auth-success', slug);
+        socket.emit('auth-confirmed', slug);
+        console.log(`${slug} is online`);
     });
 
-    // Route Direct Messages and Group Messages
     socket.on('msg-out', (p) => {
         const data = { 
             id: p.id || Date.now().toString(), 
@@ -34,25 +38,14 @@ io.on('connection', (socket) => {
             timestamp: Date.now()
         };
 
-        if (p.type === 'group') {
-            // In a real app, the server would track group members. 
-            // For this local version, we broadcast to the room.
-            socket.to(p.to).emit('msg-in', { ...data, channel: p.to });
-        } else {
-            const targetSocket = activeUsers.get(p.to.toLowerCase().trim());
-            if (targetSocket) {
-                io.to(targetSocket).emit('msg-in', data);
-                socket.emit('msg-status', { id: data.id, status: 'delivered' });
-            }
+        const targetSocket = activeUsers.get(p.to.toLowerCase().trim());
+        if (targetSocket) {
+            io.to(targetSocket).emit('msg-in', data);
+            socket.emit('msg-status', { id: data.id, status: 'delivered' });
         }
     });
 
-    // Group Management (Join Socket Rooms)
-    socket.on('join-group', (groupId) => {
-        socket.join(groupId);
-    });
-
-    // WebRTC Calling (Pass-through signaling)
+    // WebRTC Signaling for Calls
     socket.on('call-init', (d) => {
         const t = activeUsers.get(d.to.toLowerCase().trim());
         if (t) io.to(t).emit('call-receive', { from: socket.username, type: d.type, offer: d.offer });
@@ -72,4 +65,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Zenith Router running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Nexus Router live at http://localhost:${PORT}`));
