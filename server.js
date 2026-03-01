@@ -2,67 +2,78 @@ const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
 const path = require('path');
-const cors = require('cors');
 
 const app = express();
-app.use(cors());
-
-// --- FIX FOR 'Cannot GET /' ---
-// This tells Express to serve your index.html and folder files
-app.use(express.static(__dirname)); 
+app.use(express.static(__dirname));
 
 const server = http.createServer(app);
-const io = new Server(server, { 
-    cors: { origin: "*" }, 
-    maxHttpBufferSize: 5e7 // 50MB limit for files/voice
-});
+const io = new Server(server, { cors: { origin: "*" }, maxHttpBufferSize: 5e7 });
 
+// State (Volatile - clears on server restart. For 2026 production, use a simple Redis/JSON file)
 const activeUsers = new Map(); // username -> socketId
+const profiles = new Map();    // username -> {bio, social: {ig, x, github}}
+const groups = new Map();      // groupId -> {name, admin, members: Set}
 
 io.on('connection', (socket) => {
     socket.on('nexus-auth', (username) => {
         const slug = username.toLowerCase().trim();
         activeUsers.set(slug, socket.id);
         socket.username = slug;
-        socket.emit('auth-confirmed', slug);
-        console.log(`${slug} is online`);
+        if (!profiles.has(slug)) profiles.set(slug, { bio: "New to Nexus", display: username, social: {} });
+        socket.emit('auth-confirmed', { user: slug, profile: profiles.get(slug) });
     });
 
-    socket.on('msg-out', (p) => {
-        const data = { 
-            id: p.id || Date.now().toString(), 
-            from: socket.username, 
-            text: p.text, 
-            audio: p.audio, 
-            file: p.file,
-            timestamp: Date.now()
-        };
+    // --- Profile & Friends ---
+    socket.on('update-profile', (data) => profiles.set(socket.username, data));
+    socket.on('get-profile', (target) => socket.emit('profile-data', { user: target, ...profiles.get(target) }));
 
-        const targetSocket = activeUsers.get(p.to.toLowerCase().trim());
-        if (targetSocket) {
-            io.to(targetSocket).emit('msg-in', data);
-            socket.emit('msg-status', { id: data.id, status: 'delivered' });
+    socket.on('friend-req-send', (to) => {
+        const targetSid = activeUsers.get(to.toLowerCase());
+        if (targetSid) io.to(targetSid).emit('friend-req-recv', { from: socket.username });
+    });
+
+    socket.on('friend-req-accept', (from) => {
+        const targetSid = activeUsers.get(from.toLowerCase());
+        if (targetSid) io.to(targetSid).emit('friend-req-confirmed', { user: socket.username });
+    });
+
+    // --- Groups ---
+    socket.on('group-create', (data) => {
+        const id = 'grp_' + Date.now();
+        groups.set(id, { name: data.name, admin: socket.username, members: new Set([socket.username]) });
+        socket.join(id);
+        socket.emit('group-init', { id, name: data.name, admin: socket.username });
+    });
+
+    socket.on('group-msg', (p) => {
+        const grp = groups.get(p.groupId);
+        if (grp && grp.members.has(socket.username)) {
+            io.to(p.groupId).emit('msg-in', { ...p, from: socket.username, type: 'group' });
         }
     });
 
-    // WebRTC Signaling for Calls
-    socket.on('call-init', (d) => {
-        const t = activeUsers.get(d.to.toLowerCase().trim());
-        if (t) io.to(t).emit('call-receive', { from: socket.username, type: d.type, offer: d.offer });
-    });
-    socket.on('call-reply', (d) => {
-        const t = activeUsers.get(d.to.toLowerCase().trim());
-        if (t) io.to(t).emit('call-ready', { answer: d.answer });
-    });
-    socket.on('ice-signal', (d) => {
-        const t = activeUsers.get(d.to.toLowerCase().trim());
-        if (t) io.to(t).emit('ice-signal', { candidate: d.candidate });
+    socket.on('group-manage', (p) => {
+        const grp = groups.get(p.groupId);
+        if (grp?.admin !== socket.username) return; // Only admin
+
+        if (p.action === 'add') {
+            grp.members.add(p.target);
+            const tSid = activeUsers.get(p.target);
+            if (tSid) {
+                io.sockets.sockets.get(tSid).join(p.groupId);
+                io.to(tSid).emit('group-init', { id: p.groupId, name: grp.name, admin: grp.admin });
+            }
+        } else if (p.action === 'remove') {
+            grp.members.delete(p.target);
+            const tSid = activeUsers.get(p.target);
+            if (tSid) io.sockets.sockets.get(tSid).leave(p.groupId);
+        } else if (p.action === 'delete') {
+            io.to(p.groupId).emit('group-deleted', p.groupId);
+            groups.delete(p.groupId);
+        }
     });
 
-    socket.on('disconnect', () => {
-        if (socket.username) activeUsers.delete(socket.username);
-    });
+    socket.on('disconnect', () => activeUsers.delete(socket.username));
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Nexus Router live at http://localhost:${PORT}`));
+server.listen(3000, () => console.log('Nexus Ultra live at http://localhost:3000'));
