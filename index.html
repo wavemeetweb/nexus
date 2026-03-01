@@ -2,91 +2,79 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Nexus |Everyody deserves to chat when offline too </title>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nexus Zenith Prime</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    
     <style>
         :root { --bg: #0b0e14; --side: #151a21; --p: #6366f1; --card: #1e2430; --text: #e2e8f0; --dim: #64748b; --border: #2a313c; --danger: #ef4444; }
         body.light-mode { --bg: #ffffff; --side: #f1f5f9; --p: #4f46e5; --card: #f8fafc; --text: #0f172a; --dim: #94a3b8; --border: #e2e8f0; }
-        
-        * { margin:0; padding:0; box-sizing:border-box; font-family: -apple-system, system-ui, sans-serif; }
-        body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; transition: 0.3s; }
+        * { margin:0; padding:0; box-sizing:border-box; font-family: sans-serif; }
+        body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
 
         #sidebar { width: 340px; background: var(--side); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: 0.3s; z-index: 10; }
-        #chat-main { flex: 1; display: flex; flex-direction: column; position: relative; transition: 0.3s; background: var(--bg); }
+        #chat-main { flex: 1; display: flex; flex-direction: column; background: var(--bg); transition: 0.3s; }
 
         @media (max-width: 768px) {
             #sidebar { width: 100%; position: absolute; inset: 0; }
             #chat-main { width: 100%; position: absolute; inset: 0; transform: translateX(100%); }
             body.in-chat #chat-main { transform: translateX(0); }
-            .mobile-only { display: block !important; }
         }
-        .mobile-only { display: none; }
 
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 500; backdrop-filter: blur(10px); }
-        .modal { background: var(--card); padding: 25px; border-radius: 24px; width: 92%; max-width: 400px; border: 1px solid var(--border); }
-        input, textarea { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-top: 10px; outline: none; }
-        .btn { width: 100%; padding: 14px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; }
-
-        .av { width: 40px; height: 40px; border-radius: 12px; background: var(--p); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; overflow: hidden; object-fit: cover; }
-        .bubble { max-width: 80%; padding: 12px 16px; border-radius: 20px; font-size: 15px; position: relative; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(10px); }
+        .modal { background: var(--card); padding: 25px; border-radius: 20px; width: 90%; max-width: 350px; border: 1px solid var(--border); }
+        input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: white; outline: none; }
+        .btn { width: 100%; padding: 12px; margin-top: 15px; border-radius: 10px; border: none; font-weight: bold; cursor: pointer; }
+        
+        #messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:12px; }
+        .bubble { padding: 12px 16px; border-radius: 18px; max-width: 75%; font-size: 15px; position: relative; }
         .sent { align-self: flex-end; background: var(--p); color: white; border-bottom-right-radius: 4px; }
         .recv { align-self: flex-start; background: var(--card); border-bottom-left-radius: 4px; border: 1px solid var(--border); }
         
-        #messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        
+        .av { width: 40px; height: 40px; border-radius: 12px; background: var(--p); display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; }
         #call-screen { position: fixed; inset: 0; background: #000; z-index: 1000; display: none; flex-direction: column; }
         #remote-video { width: 100%; height: 100%; object-fit: cover; }
-        #local-video { position: absolute; top: 30px; right: 20px; width: 110px; height: 150px; border-radius: 15px; border: 2px solid var(--p); object-fit: cover; }
-        .rec-active { color: var(--danger) !important; animation: blink 1s infinite; }
-        @keyframes blink { 50% { opacity: 0.5; } }
+        #local-video { position: absolute; top: 20px; right: 20px; width: 100px; height: 140px; border-radius: 10px; border: 2px solid var(--p); object-fit: cover; }
     </style>
 </head>
 <body>
 
     <div id="modal-auth" class="overlay" style="display: flex;">
-        <div class="modal" style="text-align: center;">
-            <h1 style="margin-bottom: 20px;">NEXUS</h1>
-            <p style="font-size:12px; color:var(--dim); margin-bottom:10px;">Data is saved locally on your device.</p>
-            <input type="text" id="auth-in" placeholder="Choose a Username...">
-            <button class="btn" style="background:var(--p); color:white" onclick="login()">Enter Device</button>
+        <div class="modal" style="text-align:center;">
+            <h1>NEXUS</h1>
+            <input type="text" id="a-user" placeholder="Username">
+            <button class="btn" style="background:var(--p); color:white" onclick="login()">Enter Chat</button>
         </div>
     </div>
 
     <aside id="sidebar">
-        <div style="padding: 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border);">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                <div class="av" id="my-av-ui" style="width:32px; height:32px; font-size:12px;">?</div>
-                <b id="my-name-ui" style="font-size:14px;">...</b>
+        <div style="padding:20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="av" id="my-av" style="width:30px; height:30px; font-size:12px;">?</div>
+                <b id="my-name">...</b>
             </div>
-            <div style="display: flex; gap: 15px; color: var(--dim);">
-                <i data-lucide="user-plus" onclick="addFriendLocally()" style="cursor:pointer; width:18px;"></i>
-                <i data-lucide="sun" onclick="toggleTheme()" style="cursor:pointer; width:18px;"></i>
-            </div>
+            <i data-lucide="user-plus" onclick="addFriend()" style="cursor:pointer; color:var(--dim)"></i>
         </div>
-        <div id="main-list" style="flex:1; overflow-y:auto;"></div>
+        <div id="friend-list" style="flex:1; overflow-y:auto;"></div>
     </aside>
 
     <main id="chat-main">
-        <header style="height:70px; border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 20px; justify-content:space-between; background:var(--side);">
+        <header style="padding:15px; background:var(--side); display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border);">
             <div style="display:flex; align-items:center;">
-                <i data-lucide="arrow-left" class="mobile-only" onclick="document.body.classList.remove('in-chat')" style="margin-right:15px; color:var(--p)"></i>
-                <h4 id="active-title">Nexus</h4>
+                <i data-lucide="arrow-left" onclick="document.body.classList.remove('in-chat')" style="margin-right:15px; display:none;" class="mobile-only"></i>
+                <h4 id="chat-title">Select Friend</h4>
             </div>
-            <div id="call-tools" style="display:none; gap:20px; color:var(--p);">
-                <i data-lucide="phone" onclick="startCall('voice')" style="cursor:pointer; width:20px;"></i>
-                <i data-lucide="video" onclick="startCall('video')" style="cursor:pointer; width:20px;"></i>
+            <div id="call-btns" style="display:none; gap:15px; color:var(--p)">
+                <i data-lucide="phone" onclick="call('voice')" style="cursor:pointer"></i>
+                <i data-lucide="video" onclick="call('video')" style="cursor:pointer"></i>
             </div>
         </header>
         <div id="messages"></div>
-        <div style="padding:15px 20px; background:var(--side); display:flex; gap:12px; align-items:center;">
-            <label style="cursor:pointer; color:var(--dim)"><i data-lucide="paperclip"></i><input type="file" id="file-up" style="display:none" onchange="sendFile(this)"></label>
-            <input type="text" id="msg-in" placeholder="Message..." style="flex:1; margin:0;" onkeypress="if(event.key==='Enter')send()">
-            <i data-lucide="mic" id="mic-btn" style="cursor:pointer; color:var(--dim);" onclick="toggleRecord()"></i>
+        <div style="padding:15px; background:var(--side); display:flex; gap:10px; align-items:center;">
+            <label style="cursor:pointer; color:var(--dim)"><i data-lucide="paperclip"></i><input type="file" id="f-up" style="display:none" onchange="sendFile(this)"></label>
+            <input type="text" id="m-in" placeholder="Type a message..." style="margin:0" onkeypress="if(event.key==='Enter')send()">
+            <i data-lucide="mic" id="mic-btn" onclick="record()" style="cursor:pointer; color:var(--dim)"></i>
             <i data-lucide="send" onclick="send()" style="color:var(--p); cursor:pointer;"></i>
         </div>
     </main>
@@ -94,227 +82,168 @@
     <div id="call-screen">
         <video id="remote-video" autoplay playsinline></video>
         <video id="local-video" autoplay playsinline muted></video>
-        <div style="position: absolute; bottom: 50px; width:100%; display:flex; justify-content:center; gap:30px;">
-            <button onclick="endCall()" style="width:60px; height:60px; border-radius:50%; background:var(--danger); border:none; color:white;"><i data-lucide="phone-off"></i></button>
-        </div>
+        <button onclick="endCall()" style="position:absolute; bottom:40px; left:50%; transform:translateX(-50%); width:60px; height:60px; border-radius:50%; background:var(--danger); border:none; color:white;"><i data-lucide="phone-off"></i></button>
     </div>
 
     <script>
         lucide.createIcons();
-        
-        // SETUP INDEXEDDB
-        localforage.config({ name: 'ZenithPrime', storeName: 'nexus_data' });
-        
-        const socket = io('https://nexus-w4w9.onrender.com'); // UPDATE WITH YOUR RENDER URL
-        let activeTarget = "", myUsername = "", friendsList = [], mediaRecorder, audioChunks = [];
-        let pc = null, localStream = null;
+        localforage.config({ name: 'NexusDB' });
+        const socket = io(); // Connects to the same origin serving the file
+        let myUser = "", activeTarget = "", friends = [], recorder, chunks = [], pc, stream;
 
-        // 1. App Initialization (Check IndexedDB for existing user)
+        // Init
         window.onload = async () => {
-            const savedUser = await localforage.getItem('my_username');
-            if (savedUser) {
-                document.getElementById('modal-auth').style.display = 'none';
-                myUsername = savedUser;
-                socket.emit('nexus-auth', myUsername);
-                document.getElementById('my-name-ui').innerText = myUsername;
-                document.getElementById('my-av-ui').innerText = myUsername[0].toUpperCase();
-                loadSidebar();
+            myUser = await localforage.getItem('user');
+            if(myUser) {
+                document.getElementById('modal-auth').style.display='none';
+                startSession(myUser);
             }
         };
 
-        // 2. Login Logic
-        async function login() { 
-            const n = document.getElementById('auth-in').value.trim().toLowerCase(); 
-            if(n){ 
-                myUsername = n;
-                await localforage.setItem('my_username', n);
-                await localforage.setItem('friends_list', []);
-                socket.emit('nexus-auth', n); 
-                document.getElementById('modal-auth').style.display='none';
-                document.getElementById('my-name-ui').innerText = n;
-                document.getElementById('my-av-ui').innerText = n[0].toUpperCase();
-                loadSidebar();
-            } 
+        async function login() {
+            const u = document.getElementById('a-user').value.trim().toLowerCase();
+            if(u) {
+                await localforage.setItem('user', u);
+                await localforage.setItem('friends', []);
+                location.reload();
+            }
         }
 
-        // 3. Load UI from IndexedDB
-        async function loadSidebar() {
-            friendsList = (await localforage.getItem('friends_list')) || [];
-            const list = document.getElementById('main-list');
-            list.innerHTML = "";
-            
-            friendsList.forEach(f => {
+        async function startSession(u) {
+            socket.emit('nexus-auth', u);
+            document.getElementById('my-name').innerText = u;
+            document.getElementById('my-av').innerText = u[0].toUpperCase();
+            friends = (await localforage.getItem('friends')) || [];
+            renderSidebar();
+        }
+
+        async function addFriend() {
+            const f = prompt("Enter username:").toLowerCase().trim();
+            if(f && f !== myUser && !friends.includes(f)) {
+                friends.push(f);
+                await localforage.setItem('friends', friends);
+                renderSidebar();
+            }
+        }
+
+        function renderSidebar() {
+            const list = document.getElementById('friend-list'); list.innerHTML = "";
+            friends.forEach(f => {
                 const d = document.createElement('div');
-                d.style.padding = "15px"; d.style.display="flex"; d.style.alignItems="center"; d.style.gap="10px"; d.style.cursor="pointer";
-                d.innerHTML = `<div class="av" style="width:35px; height:35px; font-size:12px;">${f[0].toUpperCase()}</div><b>${f}</b>`;
-                
+                d.style.padding = "15px"; d.style.borderBottom = "1px solid var(--border)"; d.style.cursor="pointer";
+                d.innerHTML = `<b>${f}</b>`;
                 d.onclick = () => {
-                    activeTarget = f; 
-                    document.getElementById('active-title').innerText = f;
-                    document.getElementById('call-tools').style.display = 'flex';
+                    activeTarget = f;
+                    document.getElementById('chat-title').innerText = f;
+                    document.getElementById('call-btns').style.display = 'flex';
                     document.body.classList.add('in-chat');
-                    loadChatHistory(f);
+                    loadChat(f);
                 };
                 list.appendChild(d);
             });
         }
 
-        // Add Friend Manually (Since no backend)
-        async function addFriendLocally() {
-            const n = prompt("Enter their exact username:").toLowerCase().trim();
-            if(n && !friendsList.includes(n) && n !== myUsername) {
-                friendsList.push(n);
-                await localforage.setItem('friends_list', friendsList);
-                loadSidebar();
-            }
-        }
-
-        // 4. Send Message & Save Locally
         async function send() {
-            const text = document.getElementById('msg-in').value.trim();
+            const text = document.getElementById('m-in').value;
             if(text && activeTarget) {
-                const mid = 'm_'+Date.now();
-                const msgObj = { id: mid, from: 'Me', text, side: 'sent', timestamp: Date.now() };
-                
-                // Save to IndexedDB
-                await saveMessageToDb(activeTarget, msgObj);
-                
-                // Route through server
-                socket.emit('msg-out', { to: activeTarget, text: text, id: mid, type: 'dm' });
-                
-                renderMsg(msgObj);
-                document.getElementById('msg-in').value = "";
+                const msg = { id: Date.now(), from: 'Me', text, side: 'sent' };
+                await saveMsg(activeTarget, msg);
+                socket.emit('msg-out', { to: activeTarget, text });
+                renderBubble(msg);
+                document.getElementById('m-in').value = "";
             }
         }
 
-        // 5. Receive Message & Save Locally
         socket.on('msg-in', async (d) => {
-            const sender = d.from.toLowerCase();
-            const msgObj = { id: d.id, from: sender, text: d.text, audio: d.audio, file: d.file, side: 'recv', timestamp: d.timestamp };
-            
-            // Auto-add sender to friend list if unknown
-            if(!friendsList.includes(sender)) {
-                friendsList.push(sender);
-                await localforage.setItem('friends_list', friendsList);
-                loadSidebar();
-            }
-
-            // Save to their specific chat history in IndexedDB
-            await saveMessageToDb(sender, msgObj);
-
-            // Render if we are currently looking at their chat
-            if (activeTarget === sender) {
-                renderMsg(msgObj);
-            }
+            const msg = { ...d, from: d.from, side: 'recv' };
+            await saveMsg(d.from, msg);
+            if(activeTarget === d.from) renderBubble(msg);
+            if(!friends.includes(d.from)) { friends.push(d.from); await localforage.setItem('friends', friends); renderSidebar(); }
         });
 
-        // --- IndexedDB Database Helpers ---
-        async function saveMessageToDb(chatId, msgObj) {
-            const key = `chat_${chatId}`;
-            const history = (await localforage.getItem(key)) || [];
-            history.push(msgObj);
-            await localforage.setItem(key, history);
+        async function saveMsg(id, msg) {
+            const history = (await localforage.getItem(`chat_${id}`)) || [];
+            history.push(msg);
+            await localforage.setItem(`chat_${id}`, history);
         }
 
-        async function loadChatHistory(chatId) {
+        async function loadChat(id) {
             document.getElementById('messages').innerHTML = "";
-            const history = (await localforage.getItem(`chat_${chatId}`)) || [];
-            history.forEach(msg => renderMsg(msg));
+            const history = (await localforage.getItem(`chat_${id}`)) || [];
+            history.forEach(renderBubble);
         }
 
-        // --- Rendering Engine ---
-        function renderMsg(msg) {
-            if (document.querySelector(`[data-id="${msg.id}"]`)) return;
-            const d = document.createElement('div'); 
-            d.className = `bubble ${msg.side}`; 
-            d.setAttribute('data-id', msg.id);
-            
-            let body = msg.text || "";
-            if(msg.audio) body = `<button class="btn" onclick="new Audio('${msg.audio}').play()" style="margin:0; padding:5px 10px; width:auto; background:var(--card); color:var(--text); border:1px solid var(--border);"><i data-lucide="play"></i> Voice Note</button>`;
-            if(msg.file) body = `<a href="${msg.file.url}" download="${msg.file.name}" style="color:inherit; text-decoration:underline;">📄 ${msg.file.name}</a>`;
-            
-            d.innerHTML = `<small style="display:block; opacity:0.5; font-size:10px;">${msg.from}</small>${body}`;
-            document.getElementById('messages').appendChild(d);
-            lucide.createIcons();
+        function renderBubble(m) {
+            const b = document.createElement('div'); b.className = `bubble ${m.side}`;
+            let content = m.text || "";
+            if(m.audio) content = `<button onclick="new Audio('${m.audio}').play()">Play Audio</button>`;
+            if(m.file) content = `<a href="${m.file.url}" download="${m.file.name}" style="color:white">📄 ${m.file.name}</a>`;
+            b.innerHTML = `<small style="display:block;opacity:0.5">${m.from}</small>${content}`;
+            document.getElementById('messages').appendChild(b);
             document.getElementById('messages').scrollTop = 99999;
         }
 
-        // --- Voice Notes (Stored Locally) ---
-        async function toggleRecord() {
+        async function record() {
             const btn = document.getElementById('mic-btn');
-            if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-                mediaRecorder.onstop = async () => {
+            if(!recorder || recorder.state === 'inactive') {
+                const s = await navigator.mediaDevices.getUserMedia({audio:true});
+                recorder = new MediaRecorder(s); chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
                     const reader = new FileReader();
-                    reader.readAsDataURL(new Blob(audioChunks, { type: 'audio/ogg' }));
+                    reader.readAsDataURL(new Blob(chunks));
                     reader.onloadend = async () => {
-                        const mid = Date.now();
-                        const msgObj = { id: mid, from: 'Me', audio: reader.result, side: 'sent', timestamp: Date.now() };
-                        await saveMessageToDb(activeTarget, msgObj);
-                        socket.emit('msg-out', { to: activeTarget, audio: reader.result, id: mid, type: 'dm' });
-                        renderMsg(msgObj);
+                        const msg = { id: Date.now(), from: 'Me', audio: reader.result, side: 'sent' };
+                        await saveMsg(activeTarget, msg);
+                        socket.emit('msg-out', { to: activeTarget, audio: reader.result });
+                        renderBubble(msg);
                     };
                 };
-                mediaRecorder.start();
-                btn.classList.add('rec-active');
-            } else { mediaRecorder.stop(); btn.classList.remove('rec-active'); }
+                recorder.start(); btn.style.color = "red";
+            } else { recorder.stop(); btn.style.color = "var(--dim)"; }
         }
 
-        // --- File Transfers (Stored Locally) ---
-        function sendFile(input) {
-            if(input.files[0]) {
-                const reader = new FileReader();
-                reader.onload = async e => {
-                    const mid = Date.now();
-                    const fileData = { url: e.target.result, name: input.files[0].name };
-                    const msgObj = { id: mid, from: 'Me', file: fileData, side: 'sent', timestamp: Date.now() };
-                    await saveMessageToDb(activeTarget, msgObj);
-                    socket.emit('msg-out', { to: activeTarget, file: fileData, id: mid, type: 'dm' });
-                    renderMsg(msgObj);
+        function sendFile(i) {
+            if(i.files[0]) {
+                const r = new FileReader(); r.readAsDataURL(i.files[0]);
+                r.onload = async () => {
+                    const file = { url: r.result, name: i.files[0].name };
+                    const msg = { id: Date.now(), from: 'Me', file, side: 'sent' };
+                    await saveMsg(activeTarget, msg);
+                    socket.emit('msg-out', { to: activeTarget, file });
+                    renderBubble(msg);
                 };
-                reader.readAsDataURL(input.files[0]);
             }
         }
 
-        // Theme
-        function toggleTheme() {
-            document.body.classList.toggle('light-mode');
-            const theme = document.body.classList.contains('light-mode') ? 'light' : 'dark';
-            localforage.setItem('theme', theme);
-        }
-        localforage.getItem('theme').then(t => { if(t === 'light') document.body.classList.add('light-mode'); });
-
-        // --- WebRTC Calls (Unchanged, operates P2P) ---
-        async function startCall(type) {
+        // WebRTC Logic
+        async function call(type) {
             document.getElementById('call-screen').style.display='flex';
-            localStream = await navigator.mediaDevices.getUserMedia({video:type==='video', audio:true});
-            document.getElementById('local-video').srcObject = localStream;
+            stream = await navigator.mediaDevices.getUserMedia({video:type==='video', audio:true});
+            document.getElementById('local-video').srcObject = stream;
             pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-            localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
+            stream.getTracks().forEach(t=>pc.addTrack(t, stream));
             pc.onicecandidate = e => e.candidate && socket.emit('ice-signal', {to:activeTarget, candidate:e.candidate});
             pc.ontrack = e => document.getElementById('remote-video').srcObject = e.streams[0];
             const offer = await pc.createOffer(); await pc.setLocalDescription(offer);
             socket.emit('call-init', {to:activeTarget, type, offer});
         }
         socket.on('call-receive', async (d) => {
-            if(!confirm(`Call from ${d.from}. Accept?`)) return;
+            if(!confirm(`Call from ${d.from}?`)) return;
             activeTarget = d.from; document.getElementById('call-screen').style.display='flex';
-            localStream = await navigator.mediaDevices.getUserMedia({video:d.type==='video', audio:true});
-            document.getElementById('local-video').srcObject = localStream;
+            stream = await navigator.mediaDevices.getUserMedia({video:d.type==='video', audio:true});
+            document.getElementById('local-video').srcObject = stream;
             pc = new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-            localStream.getTracks().forEach(t=>pc.addTrack(t, localStream));
+            stream.getTracks().forEach(t=>pc.addTrack(t, stream));
             pc.onicecandidate = e => e.candidate && socket.emit('ice-signal', {to:d.from, candidate:e.candidate});
             pc.ontrack = e => document.getElementById('remote-video').srcObject = e.streams[0];
             await pc.setRemoteDescription(new RTCSessionDescription(d.offer));
             const answer = await pc.createAnswer(); await pc.setLocalDescription(answer);
             socket.emit('call-reply', {to:d.from, answer});
         });
-        socket.on('call-ready', (d) => pc.setRemoteDescription(new RTCSessionDescription(d.answer)));
-        socket.on('ice-signal', (d) => pc.addIceCandidate(new RTCIceCandidate(d.candidate)));
-        function endCall() { if(localStream) localStream.getTracks().forEach(t=>t.stop()); document.getElementById('call-screen').style.display='none'; if(pc) pc.close(); }
+        socket.on('call-ready', d => pc.setRemoteDescription(new RTCSessionDescription(d.answer)));
+        socket.on('ice-signal', d => pc.addIceCandidate(new RTCIceCandidate(d.candidate)));
+        function endCall() { if(stream) stream.getTracks().forEach(t=>t.stop()); document.getElementById('call-screen').style.display='none'; if(pc) pc.close(); }
     </script>
 </body>
 </html>
