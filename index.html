@@ -2,270 +2,163 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus Zenith</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zenith Nexus</title>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <style>
-        :root { --bg: #050505; --accent: #6366f1; --glass: rgba(255, 255, 255, 0.03); --border: rgba(255, 255, 255, 0.1); --text: #f8fafc; }
-        * { margin:0; padding:0; box-sizing:border-box; font-family: 'Outfit', sans-serif; }
-        body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
-        
-        /* Modern Glass UI */
-        .glass { background: var(--glass); backdrop-filter: blur(15px); border: 1px solid var(--border); border-radius: 20px; }
-        
-        #sidebar { width: 320px; border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 20px; }
-        #chat-window { flex: 1; display: flex; flex-direction: column; position: relative; }
-        
-        .nav-item { padding: 15px; border-radius: 15px; margin-bottom: 8px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; gap: 12px; }
-        .nav-item:hover { background: var(--glass); }
-        .nav-item.active { background: var(--accent); color: white; }
+        :root { --bg: #050608; --accent: #6366f1; --glass: rgba(255, 255, 255, 0.05); --border: rgba(255, 255, 255, 0.1); --text: #f8fafc; --dim: #94a3b8; }
+        * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: var(--bg); color: var(--text); height: 100vh; height: -webkit-fill-available; display: flex; overflow: hidden; }
 
-        #messages { flex: 1; overflow-y: auto; padding: 30px; display: flex; flex-direction: column; gap: 15px; }
-        .bubble { padding: 12px 18px; border-radius: 20px; max-width: 65%; font-size: 15px; line-height: 1.5; }
+        .glass { background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--border); }
+        
+        /* Desktop & Mobile Flex Logic */
+        #sidebar { width: 340px; border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: 0.3s ease; z-index: 10; background: var(--bg); }
+        #chat-window { flex: 1; display: flex; flex-direction: column; background: var(--bg); position: relative; }
+
+        /* Mobile View Switcher */
+        @media (max-width: 768px) {
+            #sidebar { width: 100%; position: absolute; height: 100%; left: 0; }
+            #sidebar.hidden { transform: translateX(-100%); }
+            #chat-window { width: 100%; }
+            #back-btn { display: block !important; }
+            .modal-card { width: 95% !important; bottom: 10px; position: absolute; border-radius: 30px 30px 20px 20px !important; }
+        }
+
+        #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .bubble { padding: 12px 16px; border-radius: 20px; max-width: 85%; font-size: 15px; }
         .sent { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
-        .recv { align-self: flex-start; background: var(--glass); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+        .recv { align-self: flex-start; background: var(--glass); border-bottom-left-radius: 4px; }
 
-        /* Login Overlay */
-        #auth-screen { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; }
-        .login-card { width: 350px; padding: 40px; text-align: center; }
+        .nav-item { padding: 16px; border-radius: 18px; margin: 0 15px 10px; cursor: pointer; display: flex; align-items: center; gap: 15px; }
+        .nav-item:active { background: var(--glass); }
 
-        /* Call Screen */
-        #call-ui { position: fixed; inset: 0; background: #000; z-index: 10000; display: none; flex-direction: column; }
-        #remote-v { width: 100%; height: 100%; object-fit: cover; }
-        #local-v { position: absolute; top: 30px; right: 30px; width: 120px; height: 180px; border-radius: 15px; border: 2px solid var(--accent); object-fit: cover; }
-
-        /* Modals */
-        .modal-wrap { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center; z-index: 5000; }
-        .modal-body { width: 400px; padding: 30px; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .modal-card { width: 380px; padding: 30px; border-radius: 24px; border: 1px solid var(--border); }
         
-        input { background: var(--glass); border: 1px solid var(--border); color: white; padding: 12px; border-radius: 10px; width: 100%; margin: 10px 0; outline: none; }
-        button { background: var(--accent); color: white; border: none; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: bold; }
+        input { background: var(--glass); border: 1px solid var(--border); color: white; padding: 14px; border-radius: 12px; width: 100%; margin: 10px 0; outline: none; font-size: 16px; }
+        button { background: var(--accent); color: white; border: none; padding: 14px; border-radius: 12px; cursor: pointer; font-weight: bold; }
+        
+        .header { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 15px; }
+        #mic-btn.recording { background: #ef4444; }
     </style>
 </head>
 <body>
 
-    <div id="auth-screen">
-        <div class="glass login-card">
-            <h1 style="letter-spacing: -1px; margin-bottom: 10px;">ZENITH</h1>
-            <p style="color: var(--dim); margin-bottom: 20px;">Secure P2P Nexus</p>
-            <input type="text" id="auth-u" placeholder="Username">
-            <button onclick="login()" style="width: 100%;">Initialize Session</button>
+    <div id="sidebar" class="glass">
+        <div class="header" style="justify-content: space-between; border:none; padding-top: 25px;">
+            <h2 id="my-id">ZENITH</h2>
+            <i data-lucide="settings" onclick="toggleModal('m-settings')"></i>
         </div>
+        <div style="padding: 0 15px 15px;"><button onclick="addFriend()" style="width:100%; border-radius:15px;"><i data-lucide="user-plus" style="vertical-align:middle; margin-right:8px;"></i>Add Contact</button></div>
+        <div id="list" style="flex:1; overflow-y:auto;"></div>
     </div>
 
-    <aside id="sidebar">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
-            <h2 id="my-id">...</h2>
-            <div style="display:flex; gap:10px;">
-                <i data-lucide="plus-circle" onclick="toggleModal('m-group')" style="cursor:pointer"></i>
-                <i data-lucide="user-plus" onclick="addFriend()" style="cursor:pointer"></i>
-            </div>
-        </div>
-        <div id="contact-list" style="flex:1; overflow-y:auto;"></div>
-    </aside>
-
     <main id="chat-window">
-        <header style="padding: 20px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-            <div onclick="openInfo()" style="cursor:pointer">
-                <h3 id="chat-title">Select Contact</h3>
-                <small id="chat-status" style="color: var(--dim)">Offline</small>
+        <header class="header">
+            <i data-lucide="chevron-left" id="back-btn" style="display:none; cursor:pointer;" onclick="closeChat()"></i>
+            <div onclick="openProfile()" style="flex:1">
+                <h3 id="chat-title">Select Chat</h3>
+                <small id="chat-sub" style="color:var(--dim)">Nexus Protocol Active</small>
             </div>
-            <div id="call-controls" style="display:none; gap:20px;">
-                <i data-lucide="phone" onclick="initCall('audio')" style="color:var(--accent); cursor:pointer"></i>
-                <i data-lucide="video" onclick="initCall('video')" style="color:var(--accent); cursor:pointer"></i>
+            <div id="actions" style="display:none; gap:15px;">
+                <i data-lucide="phone" style="color:var(--accent)"></i>
+                <i data-lucide="video" style="color:var(--accent)"></i>
             </div>
         </header>
-        
+
         <div id="messages"></div>
 
-        <div style="padding: 20px 30px; display: flex; gap: 15px; align-items: center;">
-            <div class="glass" style="flex:1; display:flex; padding:5px 15px; border-radius:100px;">
-                <input type="text" id="msg-input" placeholder="Type a message..." style="border:none; background:transparent; margin:0;" onkeypress="if(event.key==='Enter')send()">
-            </div>
-            <button onclick="send()" style="border-radius: 50%; width: 50px; height: 50px; padding:0; display:grid; place-items:center;"><i data-lucide="send"></i></button>
+        <div style="padding: 15px; display:flex; gap:10px; align-items:center;">
+            <label style="cursor:pointer; color:var(--dim)"><i data-lucide="paperclip"></i><input type="file" style="display:none" onchange="sendFile(this)"></label>
+            <input type="text" id="m-in" placeholder="Message..." style="margin:0; flex:1;" onkeypress="if(event.key==='Enter')sendText()">
+            <button id="mic-btn" onclick="toggleMic()" style="width:45px; height:45px; border-radius:50%; padding:0; background:var(--glass); border:1px solid var(--border);"><i data-lucide="mic"></i></button>
+            <button onclick="sendText()" style="width:45px; height:45px; border-radius:50%; padding:0;"><i data-lucide="send"></i></button>
         </div>
     </main>
 
-    <div id="call-ui">
-        <video id="remote-v" autoplay playsinline></video>
-        <video id="local-v" autoplay playsinline muted></video>
-        <div style="position:absolute; bottom:50px; left:50%; transform:translateX(-50%); display:flex; gap:20px;">
-            <button onclick="endCall()" style="background:red; border-radius:50%; width:70px; height:70px;"><i data-lucide="phone-off"></i></button>
+    <div id="m-settings" class="overlay">
+        <div class="glass modal-card">
+            <h3>Profile Settings</h3>
+            <input id="set-display" placeholder="Display Name">
+            <input id="set-bio" placeholder="Bio">
+            <input id="set-fb" placeholder="Facebook URL">
+            <input id="set-ig" placeholder="Instagram URL">
+            <button onclick="saveProfile()" style="width:100%; margin-top:10px;">Save Profile</button>
+            <button onclick="toggleModal('m-settings')" style="width:100%; margin-top:8px; background:none;">Cancel</button>
         </div>
     </div>
 
-    <div id="m-info" class="modal-wrap">
-        <div class="glass modal-body">
-            <h2 id="info-name">Group Info</h2>
-            <p id="info-admin" style="color:var(--accent); margin-bottom:20px;"></p>
-            <h4>Members</h4>
-            <div id="info-members" style="margin:15px 0;"></div>
-            <div id="admin-actions" style="display:none;">
-                <input type="text" id="add-member-u" placeholder="Username to add">
-                <button onclick="groupAction('add')" style="width:100%">Add Member</button>
+    <div id="m-profile" class="overlay">
+        <div class="glass modal-card" style="text-align:center;">
+            <div id="p-icon" style="width:70px; height:70px; border-radius:20px; background:var(--accent); margin:0 auto 15px; display:grid; place-items:center; font-size:24px; font-weight:bold;">?</div>
+            <h2 id="p-name">User</h2>
+            <p id="p-bio" style="color:var(--dim); margin-bottom:20px;"></p>
+            <div style="display:flex; justify-content:center; gap:20px;">
+                <a id="p-fb" target="_blank" style="color:var(--accent); display:none;"><i data-lucide="facebook"></i></a>
+                <a id="p-ig" target="_blank" style="color:var(--accent); display:none;"><i data-lucide="instagram"></i></a>
             </div>
-            <button onclick="toggleModal('m-info')" style="margin-top:20px; background:transparent; color:var(--dim); width:100%">Close</button>
-        </div>
-    </div>
-
-    <div id="m-group" class="modal-wrap">
-        <div class="glass modal-body">
-            <h3>New Group</h3>
-            <input type="text" id="new-grp-name" placeholder="Group Name">
-            <button onclick="createGroup()" style="width:100%">Create</button>
+            <button onclick="toggleModal('m-profile')" style="width:100%; margin-top:25px; background:var(--glass);">Close</button>
         </div>
     </div>
 
     <script>
-        lucide.createIcons();
         const socket = io();
-        let myU = "", activeTarget = "", isGroup = false, pc, localStream;
+        let myU = "", activeT = "", recorder, chunks = [];
+        localforage.config({ name: 'ZenithMobile' });
 
-        async function login() {
-            const u = document.getElementById('auth-u').value;
-            if(!u) return;
-            myU = u.toLowerCase();
-            socket.emit('auth', u);
-            document.getElementById('auth-screen').style.display = 'none';
-            document.getElementById('my-id').innerText = u;
-            renderList();
-        }
+        window.onload = async () => {
+            const saved = await localforage.getItem('my_user');
+            myU = saved || prompt("Enter Username:").toLowerCase();
+            if(myU) {
+                await localforage.setItem('my_user', myU);
+                socket.emit('auth', myU);
+                renderList();
+            }
+            lucide.createIcons();
+        };
 
         async function renderList() {
             const friends = await localforage.getItem('friends') || [];
-            const grps = await localforage.getItem('groups') || {};
-            const list = document.getElementById('contact-list');
-            list.innerHTML = "";
-            
-            Object.values(grps).forEach(g => {
-                const item = document.createElement('div');
-                item.className = "nav-item";
-                item.innerHTML = `<i data-lucide="users"></i> <b>${g.name}</b>`;
-                item.onclick = () => selectTarget(g.id, g.name, true);
-                list.appendChild(item);
-            });
-
-            friends.forEach(f => {
-                const item = document.createElement('div');
-                item.className = "nav-item";
-                item.innerHTML = `<i data-lucide="user"></i> <b>${f}</b>`;
-                item.onclick = () => selectTarget(f, f, false);
-                list.appendChild(item);
-            });
+            const list = document.getElementById('list');
+            list.innerHTML = friends.map(f => `
+                <div class="nav-item glass" onclick="openChat('${f}')">
+                    <div style="width:45px; height:45px; border-radius:12px; background:var(--accent); display:grid; place-items:center; font-weight:bold;">${f[0].toUpperCase()}</div>
+                    <b>${f}</b>
+                </div>
+            `).join('');
             lucide.createIcons();
         }
 
-        function selectTarget(id, name, group) {
-            activeTarget = id; isGroup = group;
-            document.getElementById('chat-title').innerText = name;
-            document.getElementById('call-controls').style.display = group ? 'none' : 'flex';
-            loadMessages();
+        function openChat(f) {
+            activeT = f;
+            document.getElementById('sidebar').classList.add('hidden');
+            document.getElementById('chat-title').innerText = f;
+            document.getElementById('actions').style.display = 'flex';
+            document.getElementById('messages').innerHTML = "";
+            localforage.getItem(`chat_${f}`).then(h => (h||[]).forEach(renderBubble));
         }
 
-        async function createGroup() {
-            const name = document.getElementById('new-grp-name').value;
-            if(name) socket.emit('grp-create', { name });
-            toggleModal('m-group');
+        function closeChat() {
+            document.getElementById('sidebar').classList.remove('hidden');
+            activeT = "";
         }
 
-        socket.on('grp-update', async (g) => {
-            const grps = await localforage.getItem('groups') || {};
-            grps[g.id] = g;
-            await localforage.setItem('groups', grps);
-            renderList();
-        });
-
-        // Calling Logic (WebRTC)
-        async function initCall(type) {
-            document.getElementById('call-ui').style.display = 'flex';
-            localStream = await navigator.mediaDevices.getUserMedia({ video: type==='video', audio: true });
-            document.getElementById('local-v').srcObject = localStream;
-            
-            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-            
-            pc.onicecandidate = e => e.candidate && socket.emit('ice-candidate', { to: activeTarget, candidate: e.candidate });
-            pc.ontrack = e => document.getElementById('remote-v').srcObject = e.streams[0];
-            
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            socket.emit('call-request', { to: activeTarget, type, offer });
-        }
-
-        socket.on('call-made', async (d) => {
-            if(!confirm(`Incoming ${d.type} call from ${d.from}. Accept?`)) return;
-            activeTarget = d.from;
-            document.getElementById('call-ui').style.display = 'flex';
-            localStream = await navigator.mediaDevices.getUserMedia({ video: d.type==='video', audio: true });
-            document.getElementById('local-v').srcObject = localStream;
-            
-            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-            
-            pc.onicecandidate = e => e.candidate && socket.emit('ice-candidate', { to: d.from, candidate: e.candidate });
-            pc.ontrack = e => document.getElementById('remote-v').srcObject = e.streams[0];
-            
-            await pc.setRemoteDescription(new RTCSessionDescription(d.offer));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit('call-answer', { to: d.from, answer });
-        });
-
-        socket.on('call-answered', d => pc.setRemoteDescription(new RTCSessionDescription(d.answer)));
-        socket.on('ice-candidate', d => pc.addIceCandidate(new RTCIceCandidate(d.candidate)));
-
-        function endCall() {
-            if(localStream) localStream.getTracks().forEach(t => t.stop());
-            document.getElementById('call-ui').style.display = 'none';
-            if(pc) pc.close();
-        }
-
-        // Group Management UI
-        async function openInfo() {
-            if(!isGroup) return;
-            const grps = await localforage.getItem('groups');
-            const g = grps[activeTarget];
-            document.getElementById('info-name').innerText = g.name;
-            document.getElementById('info-admin').innerText = `Admin: ${g.admin}`;
-            document.getElementById('admin-actions').style.display = (g.admin === myU) ? 'block' : 'none';
-            
-            const mList = document.getElementById('info-members');
-            mList.innerHTML = g.members.map(m => `
-                <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
-                    <span>${m}</span>
-                    ${g.admin === myU && m !== myU ? `<button onclick="groupAction('kick', '${m}')" style="padding:2px 8px; font-size:10px; background:red;">Kick</button>` : ''}
-                </div>
-            `).join('');
-            toggleModal('m-info');
-        }
-
-        function groupAction(action, target) {
-            const t = target || document.getElementById('add-member-u').value;
-            socket.emit('grp-manage', { action, gid: activeTarget, target: t });
-        }
-
-        // Helper
-        function toggleModal(id) {
-            const m = document.getElementById(id);
-            m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
-        }
-
-        async function send() {
-            const text = document.getElementById('msg-input').value;
-            if(!text) return;
-            const msg = { to: activeTarget, isGroup, text, from: 'Me' };
+        async function sendText() {
+            const text = document.getElementById('m-in').value;
+            if(!text || !activeT) return;
+            const msg = { to: activeT, from: 'Me', text };
             socket.emit('msg-send', msg);
-            await saveMsg(activeTarget, msg);
+            await saveMsg(activeT, msg);
             renderBubble(msg);
-            document.getElementById('msg-input').value = "";
+            document.getElementById('m-in').value = "";
         }
 
         socket.on('msg-recv', async d => {
-            const channel = d.isGroup ? d.to : d.from;
-            await saveMsg(channel, d);
-            if(activeTarget === channel) renderBubble(d);
+            await saveMsg(d.from, d);
+            if(activeT === d.from) renderBubble(d);
         });
 
         async function saveMsg(id, m) {
@@ -273,23 +166,62 @@
             h.push(m); await localforage.setItem(`chat_${id}`, h);
         }
 
-        async function loadMessages() {
-            document.getElementById('messages').innerHTML = "";
-            const h = await localforage.getItem(`chat_${activeTarget}`) || [];
-            h.forEach(renderBubble);
-        }
-
         function renderBubble(m) {
             const b = document.createElement('div');
             b.className = `bubble ${m.from === 'Me' ? 'sent' : 'recv'}`;
-            b.innerHTML = `<small style="display:block; opacity:0.6; font-size:10px;">${m.from}</small>${m.text}`;
+            if(m.text) b.innerText = m.text;
+            if(m.audio) {
+                b.innerHTML = `<i data-lucide="play"></i> Voice Note`;
+                b.onclick = () => new Audio(m.audio).play();
+            }
             document.getElementById('messages').appendChild(b);
             document.getElementById('messages').scrollTop = 99999;
+            lucide.createIcons();
+        }
+
+        async function toggleMic() {
+            const btn = document.getElementById('mic-btn');
+            if(!recorder || recorder.state === 'inactive') {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                recorder = new MediaRecorder(stream);
+                chunks = [];
+                recorder.ondataavailable = e => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/ogg' });
+                    const reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = () => socket.emit('msg-send', { to: activeT, from: 'Me', audio: reader.result });
+                };
+                recorder.start();
+                btn.classList.add('recording');
+            } else {
+                recorder.stop();
+                btn.classList.remove('recording');
+            }
+        }
+
+        function openProfile() {
+            if(activeT) socket.emit('get-profile', activeT);
+        }
+
+        socket.on('profile-data', d => {
+            document.getElementById('p-name').innerText = d.display || d.user;
+            document.getElementById('p-bio').innerText = d.bio || "Secure Nexus user.";
+            document.getElementById('p-fb').style.display = d.fb ? 'block' : 'none';
+            document.getElementById('p-ig').style.display = d.ig ? 'block' : 'none';
+            document.getElementById('p-fb').href = d.fb;
+            document.getElementById('p-ig').href = d.ig;
+            toggleModal('m-profile');
+        });
+
+        function toggleModal(id) {
+            const m = document.getElementById(id);
+            m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
         }
 
         async function addFriend() {
-            const f = prompt("Username to add:");
-            if(f) {
+            const f = prompt("Username:").toLowerCase().trim();
+            if(f && f !== myU) {
                 const friends = await localforage.getItem('friends') || [];
                 if(!friends.includes(f)) friends.push(f);
                 await localforage.setItem('friends', friends);
