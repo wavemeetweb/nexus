@@ -1,207 +1,149 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Zenith Nexus</title>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <style>
         :root { --bg: #050608; --accent: #6366f1; --glass: rgba(255, 255, 255, 0.05); --border: rgba(255, 255, 255, 0.1); --text: #f8fafc; }
-        * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', sans-serif; }
         body { background: var(--bg); color: var(--text); height: 100vh; display: flex; overflow: hidden; }
 
-        /* Sidebar & Layout */
-        #sidebar { width: 350px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--bg); z-index: 10; transition: 0.3s; }
-        #chat-window { flex: 1; display: flex; flex-direction: column; position: relative; width: 100%; }
+        #sidebar { width: 350px; border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: 0.3s; z-index: 10; background: var(--bg); }
+        #chat-window { flex: 1; display: flex; flex-direction: column; background: #000; }
 
-        /* Mobile Responsive */
         @media (max-width: 768px) {
             #sidebar { position: absolute; width: 100%; height: 100%; left: 0; }
             #sidebar.hidden { transform: translateX(-100%); }
-            .bubble { max-width: 90% !important; }
         }
 
-        /* Message Bubbles */
-        #messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
-        .bubble { padding: 12px 16px; border-radius: 20px; max-width: 75%; position: relative; cursor: pointer; transition: transform 0.1s; }
-        .bubble:active { transform: scale(0.98); }
+        #messages { flex: 1; overflow-y: auto; padding: 15px 10px; display: flex; flex-direction: column; gap: 8px; }
+        .bubble { padding: 12px 16px; border-radius: 20px; max-width: 85%; font-size: 15px; cursor: pointer; }
         .sent { align-self: flex-end; background: var(--accent); border-bottom-right-radius: 4px; }
-        .recv { align-self: flex-start; background: var(--glass); border-bottom-left-radius: 4px; }
-        .deleted { opacity: 0.4; font-style: italic; font-size: 12px; }
-
-        /* Context Menu */
-        #ctx-menu { position: fixed; display: none; background: #1a1b23; border: 1px solid var(--border); border-radius: 12px; z-index: 5000; overflow: hidden; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        #ctx-menu button { width: 100%; padding: 12px; border: none; background: none; color: white; text-align: left; cursor: pointer; border-bottom: 1px solid var(--border); }
-        #ctx-menu button:hover { background: var(--accent); }
-
-        /* Shared Components */
-        .glass-box { background: var(--glass); border: 1px solid var(--border); border-radius: 15px; padding: 15px; margin: 10px; }
+        .recv { align-self: flex-start; background: var(--glass); border-bottom-left-radius: 4px; border: 1px solid var(--border); }
+        
+        .header { height: 65px; display: flex; align-items: center; padding: 0 15px; border-bottom: 1px solid var(--border); gap: 10px; }
         .input-area { padding: 10px; display: flex; gap: 10px; align-items: center; border-top: 1px solid var(--border); }
-        input { background: var(--glass); border: 1px solid var(--border); color: white; padding: 12px; border-radius: 10px; width: 100%; outline: none; }
+        input { flex:1; background: var(--glass); border: 1px solid var(--border); color: white; padding: 12px; border-radius: 25px; outline: none; }
+        
+        #req-banner { display:none; background:var(--accent); padding:10px; margin:10px; border-radius:10px; justify-content:space-between; align-items:center; font-size:13px; }
     </style>
 </head>
 <body>
-
     <aside id="sidebar">
-        <div style="padding: 25px 20px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="padding:20px; display:flex; justify-content:space-between;">
             <h2>ZENITH</h2>
-            <i data-lucide="plus-square" onclick="showGroupModal()"></i>
+            <i data-lucide="user-plus" onclick="addFriend()"></i>
         </div>
-        <div id="contact-list" style="flex:1; overflow-y:auto;"></div>
+        <div id="req-banner">
+            <span id="req-txt"></span>
+            <button onclick="acceptReq()" style="background:#fff; color:#000; border:none; padding:4px 8px; border-radius:4px;">Accept</button>
+        </div>
+        <div id="contact-list" style="flex:1"></div>
     </aside>
 
     <main id="chat-window">
-        <header style="padding:15px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:15px;">
-            <i data-lucide="arrow-left" id="back-btn" onclick="goBack()" style="display:none"></i>
-            <div style="flex:1">
-                <h3 id="active-title">Select a Chat</h3>
-                <small id="active-status" style="color:var(--accent); cursor:pointer" onclick="showMemberActions()"></small>
-            </div>
-            <i data-lucide="trash-2" onclick="clearLocalHistory()" style="opacity:0.5; cursor:pointer"></i>
+        <header class="header">
+            <i data-lucide="arrow-left" id="back-btn" style="display:none" onclick="goBack()"></i>
+            <h3 id="active-title">Select Chat</h3>
         </header>
-
         <div id="messages"></div>
-
         <div class="input-area">
-            <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter')send()">
-            <button onclick="send()" style="background:var(--accent); border:none; padding:10px 20px; border-radius:10px; color:white;"><i data-lucide="send"></i></button>
+            <input type="text" id="m-in" placeholder="Message..." onkeypress="if(event.key==='Enter')send()">
+            <button onclick="send()" style="background:var(--accent); border:none; padding:10px; border-radius:50%; color:#fff;"><i data-lucide="send"></i></button>
         </div>
     </main>
 
-    <div id="ctx-menu">
-        <button id="btn-del-everyone" style="color:#ff4d4d">Delete for Everyone</button>
-        <button onclick="hideMenu()">Cancel</button>
-    </div>
-
     <script>
         const socket = io();
-        let myU = "", activeT = "", isGrp = false, selMsgId = null;
+        let myU = "", activeT = "", pendingFrom = "";
 
-        window.onload = () => {
-            myU = prompt("Enter Username:").toLowerCase().trim();
-            if(myU) socket.emit('auth', myU);
-            renderContacts();
+        window.onload = async () => {
+            myU = await localforage.getItem('u') || prompt("Username:").toLowerCase().trim();
+            if(myU) {
+                await localforage.setItem('u', myU);
+                socket.emit('auth', myU);
+            }
             lucide.createIcons();
+            renderList();
         };
 
-        // --- REAL MESSAGE LOGIC ---
+        async function addFriend() {
+            const target = prompt("Target Username:");
+            if(target) socket.emit('send-request', { to: target });
+        }
+
+        socket.on('notify-request', (d) => {
+            pendingFrom = d.from;
+            document.getElementById('req-txt').innerText = `${d.from} wants to chat`;
+            document.getElementById('req-banner').style.display = 'flex';
+        });
+
+        async function acceptReq() {
+            const friends = await localforage.getItem('friends') || [];
+            if(!friends.includes(pendingFrom)) friends.push(pendingFrom);
+            await localforage.setItem('friends', friends);
+            document.getElementById('req-banner').style.display = 'none';
+            renderList();
+        }
+
         async function send() {
-            const text = document.getElementById('msg-input').value;
-            if(!text || !activeT) return;
-            const msg = { to: activeT, isGroup: isGrp, text, from: 'Me', id: 'm_'+Date.now() };
+            const val = document.getElementById('m-in').value;
+            if(!val || !activeT) return;
+            const msg = { to: activeT, text: val, from: 'Me', id: 'm_'+Date.now() };
             socket.emit('msg-send', msg);
             await saveMsg(activeT, msg);
             renderBubble(msg);
-            document.getElementById('msg-input').value = "";
+            document.getElementById('m-in').value = "";
         }
 
         socket.on('msg-recv', async (d) => {
-            const channel = d.isGroup ? d.to : d.from;
-            await saveMsg(channel, d);
-            if(activeT === channel) renderBubble(d);
+            await saveMsg(d.from, d);
+            if(activeT === d.from) renderBubble(d);
         });
 
-        // --- REAL DELETE BROADCAST ---
-        function openMenu(e, msgId, fromMe) {
-            e.preventDefault();
-            selMsgId = msgId;
-            const menu = document.getElementById('ctx-menu');
-            menu.style.display = 'block';
-            menu.style.top = e.pageY + 'px';
-            menu.style.left = e.pageX + 'px';
-            document.getElementById('btn-del-everyone').style.display = fromMe ? 'block' : 'none';
-            document.getElementById('btn-del-everyone').onclick = () => {
-                socket.emit('delete-msg', { msgId, to: activeT, isGroup: isGrp });
-                hideMenu();
-            };
-        }
-
-        socket.on('msg-deleted-global', async (data) => {
-            const h = await localforage.getItem(`chat_${activeT}`) || [];
-            const updated = h.map(m => m.id === data.msgId ? { ...m, text: "This message was deleted", deleted: true } : m);
-            await localforage.setItem(`chat_${activeT}`, updated);
-            refreshChat();
-        });
-
-        // --- REAL GROUP LOGIC ---
-        function showGroupModal() {
-            const name = prompt("New Group Name:");
-            if(name) socket.emit('create-group', { name });
-        }
-
-        socket.on('group-created', async (g) => {
-            const grps = await localforage.getItem('groups') || {};
-            grps[g.gid] = g;
-            await localforage.setItem('groups', grps);
-            renderContacts();
-        });
-
-        socket.on('added-to-group', async (g) => {
-            const grps = await localforage.getItem('groups') || {};
-            grps[g.gid] = g;
-            await localforage.setItem('groups', grps);
-            renderContacts();
-        });
-
-        function showMemberActions() {
-            if(!isGrp) return;
-            const target = prompt("Type username to add to this group:");
-            if(target) socket.emit('add-to-group', { gid: activeT, target });
-        }
-
-        // --- UI CORE ---
-        async function renderContacts() {
-            const friends = ['RealPerson1', 'RealPerson2']; // In real app, fetch from DB
-            const grps = await localforage.getItem('groups') || {};
-            const list = document.getElementById('contact-list');
-            list.innerHTML = "";
-            
-            Object.values(grps).forEach(g => {
-                const d = document.createElement('div');
-                d.className = "glass-box"; d.style.cursor="pointer";
-                d.innerHTML = `<b>👥 ${g.name}</b>`;
-                d.onclick = () => selectChat(g.gid, g.name, true);
-                list.appendChild(d);
+        async function renderList() {
+            const friends = await localforage.getItem('friends') || [];
+            const container = document.getElementById('contact-list');
+            container.innerHTML = "";
+            friends.forEach(f => {
+                const div = document.createElement('div');
+                div.style.padding = "15px"; div.style.cursor = "pointer";
+                div.innerHTML = `<b>👤 ${f}</b>`;
+                div.onclick = () => {
+                    activeT = f;
+                    document.getElementById('active-title').innerText = f;
+                    if(window.innerWidth < 768) {
+                        document.getElementById('sidebar').classList.add('hidden');
+                        document.getElementById('back-btn').style.display = "block";
+                    }
+                    loadHistory();
+                };
+                container.appendChild(div);
             });
         }
 
-        function selectChat(id, name, group) {
-            activeT = id; isGrp = group;
-            document.getElementById('active-title').innerText = name;
-            document.getElementById('active-status').innerText = isGrp ? "Manage Members" : "Secure Chat";
-            if(window.innerWidth < 768) {
-                document.getElementById('sidebar').classList.add('hidden');
-                document.getElementById('back-btn').style.display = 'block';
-            }
-            refreshChat();
-        }
-
-        async function refreshChat() {
+        async function loadHistory() {
             document.getElementById('messages').innerHTML = "";
-            const h = await localforage.getItem(`chat_${activeT}`) || [];
+            const h = await localforage.getItem('chat_'+activeT) || [];
             h.forEach(renderBubble);
         }
 
         function renderBubble(m) {
             const b = document.createElement('div');
-            const fromMe = m.from === 'Me' || m.from === myU;
-            b.className = `bubble ${fromMe ? 'sent' : 'recv'}`;
-            b.id = m.id;
-            b.innerHTML = m.deleted ? `<span class="deleted">Message deleted</span>` : m.text;
-            b.oncontextmenu = (e) => openMenu(e, m.id, fromMe);
+            b.className = `bubble ${m.from === 'Me' ? 'sent' : 'recv'}`;
+            b.innerText = m.text;
             document.getElementById('messages').appendChild(b);
             document.getElementById('messages').scrollTop = 99999;
         }
 
         function goBack() { document.getElementById('sidebar').classList.remove('hidden'); }
-        function hideMenu() { document.getElementById('ctx-menu').style.display = 'none'; }
         async function saveMsg(id, m) {
-            const h = await localforage.getItem(`chat_${id}`) || [];
-            h.push(m); await localforage.setItem(`chat_${id}`, h);
+            const h = await localforage.getItem('chat_'+id) || [];
+            h.push(m); await localforage.setItem('chat_'+id, h);
         }
-        window.onclick = hideMenu;
     </script>
 </body>
 </html>
