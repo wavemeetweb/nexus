@@ -7,56 +7,53 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { 
     cors: { origin: "*" },
-    maxHttpBufferSize: 1e8 
+    maxHttpBufferSize: 1e8 // 100MB for Documents/Voice
 });
 
-// CRITICAL: Serves your index.html and assets
 app.use(express.static(__dirname));
 
-const activeUsers = new Map();
-const groups = new Map();
+const activeUsers = new Map(); // username -> socketId
 
 io.on('connection', (socket) => {
     socket.on('auth', (u) => {
-        const user = u.toLowerCase().trim();
-        activeUsers.set(user, socket.id);
-        socket.username = user;
+        socket.username = u.toLowerCase().trim();
+        activeUsers.set(socket.username, socket.id);
         socket.emit('ready');
     });
 
-    // Real-Time Request Logic
-    socket.on('send-request', (data) => {
-        const targetSid = activeUsers.get(data.to.toLowerCase());
-        if (targetSid) io.to(targetSid).emit('notify-request', { from: socket.username });
-    });
-
-    // Real Group Logic
-    socket.on('create-group', (data) => {
-        const gid = 'gid_' + Date.now();
-        groups.set(gid, { name: data.name, admin: socket.username, members: new Set([socket.username]) });
-        socket.join(gid);
-        socket.emit('group-created', { gid, name: data.name, admin: socket.username });
-    });
+    // --- GROUPS & ROOMS ---
+    socket.on('join-group', (gid) => socket.join(gid));
 
     socket.on('msg-send', (d) => {
         const msg = { ...d, from: socket.username, id: 'm_' + Date.now() };
-        if (d.isGroup) io.to(d.to).emit('msg-recv', msg);
-        else {
+        if (d.isGroup) {
+            io.to(d.to).emit('msg-recv', msg);
+        } else {
             const target = activeUsers.get(d.to.toLowerCase());
             if (target) io.to(target).emit('msg-recv', msg);
         }
     });
 
+    // --- GLOBAL DELETE ---
     socket.on('delete-msg', (data) => {
-        if (data.isGroup) io.to(data.to).emit('msg-deleted-global', { msgId: data.msgId });
-        else {
-            const target = activeUsers.get(data.to.toLowerCase());
-            if (target) io.to(target).emit('msg-deleted-global', { msgId: data.msgId });
-            socket.emit('msg-deleted-global', { msgId: data.msgId });
-        }
+        const target = data.isGroup ? data.to : activeUsers.get(data.to.toLowerCase());
+        if (target) io.to(target).emit('msg-deleted-global', { msgId: data.msgId });
+        socket.emit('msg-deleted-global', { msgId: data.msgId });
     });
+
+    // --- WEBRTC SIGNALING (CALLS) ---
+    socket.on('call-request', (data) => {
+        const target = activeUsers.get(data.to.toLowerCase());
+        if (target) io.to(target).emit('incoming-call', { from: socket.username, type: data.type, offer: data.offer });
+    });
+
+    socket.on('call-answer', (data) => {
+        const target = activeUsers.get(data.to.toLowerCase());
+        if (target) io.to(target).emit('call-accepted', { answer: data.answer });
+    });
+
+    socket.on('disconnect', () => activeUsers.delete(socket.username));
 });
 
-// Render requirement: Bind to 0.0.0.0 and process.env.PORT
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => console.log(`Zenith Live on ${PORT}`));
