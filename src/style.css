@@ -1,0 +1,32 @@
+/* src/styles.css */
+body {
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
+  margin: 0;
+}
+.app {
+  padding: 20px;
+}
+header {
+  display: flex;
+  justify-content: space-between;
+  background: #0077ff;
+  color: white;
+  padding: 10px;
+}
+header h1 {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+video {
+  width: 100%;
+  max-height: 300px;
+  border: 1px solid #ccc;
+  margin-top: 10px;
+}
+.chat, .participants, .scheduler, .screen-share {
+  margin-top: 20px;
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+}
