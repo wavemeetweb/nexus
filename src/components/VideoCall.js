@@ -8,7 +8,7 @@ import {
   onSnapshot,
   updateDoc
 } from "firebase/firestore";
-import "./VideoCall.css";
+
 
 /**
  * VideoCall Component
