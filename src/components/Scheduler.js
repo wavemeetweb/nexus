@@ -8,7 +8,6 @@ import {
   onSnapshot,
   updateDoc
 } from "firebase/firestore";
-import "./Scheduler.css";
 
 /**
  * Scheduler Component
