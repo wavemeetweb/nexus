@@ -8,6 +8,7 @@ import {
   onSnapshot,
   updateDoc
 } from "firebase/firestore";
+
 /**
  * VideoCall Component
  * Zoom-style meeting room with video grid, controls, and Firebase presence tracking
