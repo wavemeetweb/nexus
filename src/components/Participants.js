@@ -1,13 +1,15 @@
 import React from "react";
 
 function Participants() {
-  const participants = ["Alice", "Bob", "Charlie"]; // placeholder
+  const participants = ["Alice", "Bob", "Charlie"];
 
   return (
     <div className="participants">
       <h2>Participants</h2>
       <ul>
-        {participants.map((p, i) => <li key={i}>{p}</li>)}
+        {participants.map((p, i) => (
+          <li key={i}>{p}</li>
+        ))}
       </ul>
     </div>
   );
