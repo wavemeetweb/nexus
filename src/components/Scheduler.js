@@ -1,24 +1,31 @@
 import React, { useState } from "react";
-import { db } from "../firebase";
-import { collection, addDoc } from "firebase/firestore";
 
 function Scheduler({ user }) {
-  const [meeting, setMeeting] = useState("");
+  const [events, setEvents] = useState([]);
+  const [newEvent, setNewEvent] = useState("");
 
-  const scheduleMeeting = async () => {
-    await addDoc(collection(db, "meetings"), {
-      title: meeting,
-      host: user.email,
-      date: new Date().toISOString()
-    });
-    setMeeting("");
+  const addEvent = () => {
+    if (!newEvent) return;
+    setEvents([...events, newEvent]);
+    setNewEvent("");
   };
 
   return (
     <div className="scheduler">
-      <h2>Schedule Meeting</h2>
-      <input value={meeting} onChange={(e) => setMeeting(e.target.value)} />
-      <button onClick={scheduleMeeting}>Schedule</button>
+      <h2>Scheduler</h2>
+      <p>User: {user?.email}</p>
+      <input
+        type="text"
+        placeholder="Add event..."
+        value={newEvent}
+        onChange={(e) => setNewEvent(e.target.value)}
+      />
+      <button onClick={addEvent}>Add</button>
+      <ul>
+        {events.map((event, i) => (
+          <li key={i}>{event}</li>
+        ))}
+      </ul>
     </div>
   );
 }
