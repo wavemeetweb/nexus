@@ -1,178 +1,105 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zenith Nexus | Virtual Classroom</title>
+    <title>Zenith Nexus | Virtual School</title>
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
     <style>
-        :root { --bg: #0b0c10; --panel: #1a1c23; --accent: #0b5cff; --text: #f8fafc; --border: rgba(255,255,255,0.1); }
-        * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', sans-serif; }
-        body { background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; }
-
-        /* --- AUTH OVERLAY --- */
-        #auth-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 5000; display: flex; align-items: center; justify-content: center; }
-        .auth-card { background: var(--panel); padding: 40px; border-radius: 20px; width: 100%; max-width: 400px; text-align: center; border: 1px solid var(--border); }
-        .auth-input { width: 100%; padding: 12px; margin-bottom: 15px; background: #000; border: 1px solid var(--border); color: white; border-radius: 8px; }
-        .btn-google { background: white; color: black; display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; padding: 12px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; margin-top: 15px; }
-
-        /* --- CLASSROOM LAYOUT --- */
-        #main-stage { flex: 1; display: flex; flex-direction: column; position: relative; }
-        #video-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; padding: 20px; overflow-y: auto; }
-        .video-box { background: #000; border-radius: 12px; position: relative; aspect-ratio: 16/9; border: 1px solid var(--border); overflow: hidden; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .name-tag { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 4px 10px; border-radius: 5px; font-size: 12px; }
-
-        /* --- WHITEBOARD --- */
-        #whiteboard { position: absolute; inset: 0; background: white; z-index: 100; display: none; cursor: crosshair; }
-
-        /* --- SIDEBAR --- */
-        #sidebar { width: 320px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; }
-        #chat-msgs { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .chat-bubble { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; font-size: 14px; }
-
-        /* --- CONTROLS --- */
-        #toolbar { height: 80px; background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; gap: 20px; border-top: 1px solid var(--border); }
-        .tool-btn { width: 50px; height: 50px; border-radius: 50%; border: none; background: #333; color: white; cursor: pointer; display: grid; place-items: center; }
-        .tool-btn:hover { background: var(--accent); }
-        .btn-danger { background: #ff4757; }
+        :root { --accent: #2563eb; --danger: #ef4444; --bg: #0f172a; }
+        body { margin: 0; font-family: sans-serif; background: var(--bg); color: white; overflow: hidden; }
+        
+        /* Dashboard/Lobby */
+        #lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        .box { background: #1e293b; padding: 2rem; border-radius: 12px; text-align: center; }
+        input { padding: 12px; width: 250px; border-radius: 6px; border: none; margin: 10px 0; }
+        
+        /* Meeting Interface */
+        #meeting { display: none; height: 100vh; grid-template-columns: 1fr 300px; }
+        #video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; padding: 20px; }
+        
+        /* Sidebar */
+        #sidebar { background: #1e293b; border-left: 1px solid #334155; padding: 20px; }
+        
+        /* Action Bar (Mute, Video, End) */
+        .controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
+                    background: #1e293b; padding: 15px 30px; border-radius: 50px; display: flex; gap: 20px; }
+        .btn { border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: white; font-weight: bold; }
+        .btn-mute { background: #475569; }
+        .btn-end { background: var(--danger); }
+        .active-red { background: var(--danger) !important; }
     </style>
 </head>
 <body>
 
-    <div id="auth-overlay">
-        <div class="auth-card">
-            <h1 style="margin-bottom: 20px;">Zenith Nexus</h1>
-            <input type="email" id="email" class="auth-input" placeholder="Email Address">
-            <input type="password" id="pass" class="auth-input" placeholder="Password">
-            <button onclick="handleEmailLogin()" style="width:100%; padding:12px; background:var(--accent); border:none; border-radius:8px; color:white; font-weight:bold;">Login / Sign Up</button>
-            <button onclick="handleGoogleLogin()" class="btn-google">
-                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18"> Continue with Google
-            </button>
+    <div id="lobby">
+        <div class="box">
+            <h1>Zenith Nexus</h1>
+            <input type="text" id="u-name" placeholder="Your Name">
+            <input type="text" id="r-code" placeholder="Classroom Code">
+            <button onclick="enterMeeting()" style="background:var(--accent); color:white; border:none; padding:12px 30px; border-radius:6px; cursor:pointer;">Enter Class</button>
         </div>
     </div>
 
-    <main id="main-stage">
-        <canvas id="whiteboard"></canvas>
+    <div id="meeting">
         <div id="video-grid">
-            <div class="video-box">
-                <video id="localVideo" autoplay muted playsinline></video>
-                <div class="name-tag">You (Presenter)</div>
-            </div>
+            <video id="local-video" autoplay muted playsinline style="width:100%; border-radius:10px; background:black;"></video>
         </div>
 
-        <div id="toolbar">
-            <button class="tool-btn" onclick="toggleMic()"><i data-lucide="mic"></i></button>
-            <button class="tool-btn" onclick="toggleCam()"><i data-lucide="video"></i></button>
-            <button class="tool-btn" onclick="shareScreen()"><i data-lucide="monitor-up"></i></button>
-            <button class="tool-btn" onclick="toggleBoard()"><i data-lucide="edit-3"></i></button>
-            <button class="tool-btn btn-danger" onclick="location.reload()"><i data-lucide="phone-off"></i></button>
+        <div id="sidebar">
+            <h3>Participants</h3>
+            <div id="p-list"></div>
         </div>
-    </main>
 
-    <aside id="sidebar">
-        <div style="padding:20px; border-bottom:1px solid var(--border);"><h3>Class Chat</h3></div>
-        <div id="chat-msgs"></div>
-        <div style="padding:15px; display:flex; gap:8px;">
-            <input type="text" id="chat-in" placeholder="Message..." style="flex:1; background:#000; border:1px solid var(--border); color:white; padding:10px; border-radius:5px;">
-            <button onclick="sendChat()" style="background:var(--accent); border:none; padding:10px; border-radius:5px; color:white;"><i data-lucide="send"></i></button>
+        <div class="controls">
+            <button class="btn btn-mute" id="mic-btn" onclick="toggleMic()">Mic</button>
+            <button class="btn btn-mute" id="cam-btn" onclick="toggleCam()">Cam</button>
+            <button class="btn btn-end" onclick="endCall()">End Call</button>
         </div>
-    </aside>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyBBXlMsVKCVZg7wkw2CjWeetnGkpINV_M4",
-            authDomain: "webnexus-cdc47.firebaseapp.com",
-            projectId: "webnexus-cdc47",
-            storageBucket: "webnexus-cdc47.firebasestorage.app",
-            messagingSenderId: "185823698270",
-            appId: "1:185823698270:web:b92eb6507a6974e46043cf",
-            measurementId: "G-59DS94R3BX"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const provider = new GoogleAuthProvider();
-        const socket = io();
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                document.getElementById('auth-overlay').style.display = 'none';
-                socket.emit('auth', { name: user.displayName || user.email, uid: user.uid });
-                socket.emit('join-room', 'school_room_101');
-                initMedia();
-            }
-        });
-
-        window.handleEmailLogin = () => {
-            const e = document.getElementById('email').value;
-            const p = document.getElementById('pass').value;
-            signInWithEmailAndPassword(auth, e, p).catch(() => createUserWithEmailAndPassword(auth, e, p));
-        };
-        window.handleGoogleLogin = () => signInWithPopup(auth, provider);
-    </script>
+    </div>
 
     <script>
         const socket = io();
-        let localStream, isBoardOpen = false;
+        let localStream;
+        let myUID = "ID-" + Math.random().toString(36).substr(2, 7);
 
-        async function initMedia() {
+        async function enterMeeting() {
+            const name = document.getElementById('u-name').value;
+            const room = document.getElementById('r-code').value;
+            if(!name || !room) return alert("Fill all fields");
+
+            // Switch UI
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('meeting').style.display = 'grid';
+
+            // Hardware Start
             localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('localVideo').srcObject = localStream;
-            lucide.createIcons();
+            document.getElementById('local-video').srcObject = localStream;
+
+            // Auth & Join
+            socket.emit('auth-user', { name, uid: myUID, class: "10", section: "A" });
+            socket.emit('join-room', room);
         }
 
-        async function shareScreen() {
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            document.getElementById('localVideo').srcObject = stream;
+        function toggleMic() {
+            const audio = localStream.getAudioTracks()[0];
+            audio.enabled = !audio.enabled;
+            document.getElementById('mic-btn').classList.toggle('active-red', !audio.enabled);
         }
 
-        // Whiteboard Logic
-        const canvas = document.getElementById('whiteboard');
-        const ctx = canvas.getContext('2d');
-        let drawing = false;
-
-        function toggleBoard() {
-            isBoardOpen = !isBoardOpen;
-            canvas.style.display = isBoardOpen ? 'block' : 'none';
-            canvas.width = window.innerWidth - 320;
-            canvas.height = window.innerHeight - 80;
+        function toggleCam() {
+            const video = localStream.getVideoTracks()[0];
+            video.enabled = !video.enabled;
+            document.getElementById('cam-btn').classList.toggle('active-red', !video.enabled);
         }
 
-        canvas.onmousedown = () => drawing = true;
-        canvas.onmouseup = () => { drawing = false; ctx.beginPath(); };
-        canvas.onmousemove = (e) => {
-            if (!drawing) return;
-            ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#000';
-            ctx.lineTo(e.clientX, e.clientY);
-            ctx.stroke();
-            socket.emit('draw', { x: e.clientX, y: e.clientY, roomId: 'school_room_101' });
-        };
+        function endCall() {
+            location.reload();
+        }
 
-        socket.on('draw-remote', (d) => {
-            ctx.lineTo(d.x, d.y); ctx.stroke();
-        });
-
-        // Chat Logic
-        function sendChat() {
-            const text = document.getElementById('chat-in').value;
-            if(text) {
-                socket.emit('send-chat', { roomId: 'school_room_101', text });
-                document.getElementById('chat-in').value = "";
+        socket.on('force-check-ban', (uid) => {
+            if(myUID === uid) {
+                alert("BANNED BY ADMIN");
+                location.href = "about:blank";
             }
-        }
-
-        socket.on('recv-chat', (d) => {
-            const div = document.createElement('div');
-            div.className = 'chat-bubble';
-            div.innerHTML = `<b>${d.from}:</b> ${d.text}`;
-            document.getElementById('chat-msgs').appendChild(div);
-            document.getElementById('chat-msgs').scrollTop = 9999;
         });
     </script>
 </body>
