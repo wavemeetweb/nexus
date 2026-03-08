@@ -1,114 +1,69 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Zenith Nexus: Classroom</title>
+    <title>Zenith Nexus | Online Class</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        :root { --panel: #1a1c23; --accent: #0b5cff; --bg: #0f1014; }
-        body { background: var(--bg); color: white; display: flex; height: 100vh; overflow: hidden; margin: 0; }
-        
-        /* Video Grid */
-        #video-area { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; padding: 20px; align-content: center; }
-        .video-container { background: #000; border-radius: 12px; position: relative; overflow: hidden; aspect-ratio: 16/9; }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .user-label { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 4px; font-size: 12px; }
-
-        /* Sidebar & Whiteboard */
-        #class-sidebar { width: 300px; background: var(--panel); border-left: 1px solid #333; display: flex; flex-direction: column; }
-        #whiteboard-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none; background: white; }
-
-        /* Controls */
-        #controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; background: rgba(0,0,0,0.8); padding: 12px 25px; border-radius: 50px; backdrop-filter: blur(10px); }
-        .btn { width: 45px; height: 45px; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center; background: #333; color: white; transition: 0.2s; }
-        .btn:hover { background: #444; }
-        .btn-end { background: #ff4757 !important; }
-        .btn-active { background: var(--accent) !important; }
+        :root { --bg: #0b0d11; --accent: #2563eb; --card: #161b22; }
+        body { background: var(--bg); color: white; font-family: sans-serif; margin: 0; }
+        .hidden { display: none; }
+        .btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; background: var(--accent); color: white; }
+        #video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; padding: 20px; }
     </style>
 </head>
 <body>
 
-    <div id="video-area">
-        <div class="video-container" id="local-container">
-            <video id="localVideo" autoplay muted playsinline></video>
-            <div class="user-label">You</div>
+    <div id="setup-view" style="padding: 50px; text-align: center;">
+        <h2>Nexus Profile Setup</h2>
+        <input type="text" id="u-name" placeholder="Full Name"><br><br>
+        <input type="text" id="u-class" placeholder="Class (e.g. 10)"><br><br>
+        <input type="text" id="u-sec" placeholder="Section (e.g. B)"><br><br>
+        <button class="btn" onclick="goDashboard()">Enter Dashboard</button>
+    </div>
+
+    <div id="dash-view" class="hidden" style="padding: 50px; text-align: center;">
+        <h1 id="welcome">Welcome</h1>
+        <div style="display: flex; justify-content: center; gap: 20px;">
+            <button class="btn" onclick="startClass()">Start Instant Meeting</button>
+            <button class="btn" style="background:#333;" onclick="joinClass()">Join with ID</button>
         </div>
     </div>
 
-    <canvas id="whiteboard-canvas"></canvas>
-
-    <div id="controls">
-        <button class="btn" onclick="toggleMic()"><i data-lucide="mic"></i></button>
-        <button class="btn" onclick="toggleCam()"><i data-lucide="video"></i></button>
-        <button class="btn" onclick="shareScreen()"><i data-lucide="monitor-up"></i></button>
-        <button class="btn" onclick="toggleBoard()"><i data-lucide="edit-3"></i></button>
-        <button class="btn" onclick="raiseHand()"><i data-lucide="hand"></i></button>
-        <button class="btn btn-end" onclick="leaveClass()"><i data-lucide="phone-off"></i></button>
-    </div>
-
-    <aside id="class-sidebar">
-        <div style="padding:20px; border-bottom:1px solid #333;"><h3>Class Chat</h3></div>
-        <div id="messages" style="flex:1; padding:15px; overflow-y:auto;"></div>
-        <div style="padding:15px; display:flex; gap:5px;">
-            <input type="text" id="chat-in" placeholder="Ask a question..." style="flex:1; padding:8px; border-radius:5px; border:none; background:#333; color:white;">
-            <button onclick="sendChat()" style="background:var(--accent); border:none; padding:8px 15px; border-radius:5px; color:white;">Send</button>
+    <div id="class-view" class="hidden">
+        <div id="video-grid">
+             <video id="myCam" autoplay muted style="width:100%; border-radius:10px; background:#000;"></video>
         </div>
-    </aside>
+        </div>
 
     <script>
         const socket = io();
-        lucide.createIcons();
+        let myProfile = {};
 
-        // 1. Screen Sharing Feature
-        async function shareScreen() {
-            try {
-                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                document.getElementById('localVideo').srcObject = screenStream;
-                // In a real app, you'd replace the video track in your Peer connection here
-            } catch (err) {
-                console.error("Error sharing screen: ", err);
-            }
+        function goDashboard() {
+            myProfile = { 
+                name: document.getElementById('u-name').value, 
+                class: document.getElementById('u-class').value, 
+                section: document.getElementById('u-sec').value,
+                uid: 'ID-' + Math.random().toString(36).substr(2, 9)
+            };
+            document.getElementById('welcome').innerText = `Hi, ${myProfile.name}`;
+            toggleView('dash-view');
+            socket.emit('auth-user', myProfile);
         }
 
-        // 2. Whiteboard Logic
-        const canvas = document.getElementById('whiteboard-canvas');
-        const ctx = canvas.getContext('2d');
-        let drawing = false;
-
-        function toggleBoard() {
-            const board = document.getElementById('whiteboard-canvas');
-            board.style.display = board.style.display === 'block' ? 'none' : 'block';
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+        function toggleView(id) {
+            ['setup-view', 'dash-view', 'class-view'].forEach(v => document.getElementById(v).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
         }
 
-        canvas.onmousedown = () => drawing = true;
-        canvas.onmouseup = () => drawing = false;
-        canvas.onmousemove = (e) => {
-            if (!drawing) return;
-            ctx.lineWidth = 3;
-            ctx.lineCap = 'round';
-            ctx.strokeStyle = 'black';
-            ctx.lineTo(e.clientX, e.clientY);
-            ctx.stroke();
-            socket.emit('draw-on-board', { x: e.clientX, y: e.clientY });
-        };
-
-        // 3. Class Features
-        function raiseHand() {
-            socket.emit('raise-hand');
-            alert("Hand Raised! The teacher has been notified.");
+        async function startClass() {
+            toggleView('class-view');
+            const stream = await navigator.mediaDevices.getUserMedia({video: true, audio: true});
+            document.getElementById('myCam').srcObject = stream;
         }
 
-        socket.on('student-raised-hand', (data) => {
-            // Teacher sees a notification
-            const notification = document.createElement('div');
-            notification.innerText = `${data.name} raised their hand ✋`;
-            notification.style = "position:fixed; top:20px; right:320px; background:var(--accent); padding:10px 20px; border-radius:8px;";
-            document.body.appendChild(notification);
-            setTimeout(() => notification.remove(), 5000);
-        });
+        socket.on('kick-notice', (msg) => { if(msg === "BANNED_GLOBALLY") { alert("You are banned."); location.reload(); }});
     </script>
 </body>
 </html>
