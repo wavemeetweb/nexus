@@ -2,155 +2,196 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zenith Nexus | Smart Classroom</title>
+    <title>Nexus | Next-Gen Learning</title>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     
     <style>
-        :root { --primary: #2563eb; --bg: #0f172a; --panel: #1e293b; --text: #f8fafc; }
-        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
-        
-        /* AUTH SECTION */
-        #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        .google-btn { background: white; color: #444; padding: 12px 24px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+        :root { 
+            --primary: #6366f1; 
+            --accent: #10b981; 
+            --bg: #020617; 
+            --card-bg: rgba(30, 41, 59, 0.5);
+            --border: rgba(255, 255, 255, 0.1);
+        }
 
-        /* POPUP MODAL */
-        #profile-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; align-items: center; justify-content: center; }
-        .modal-content { background: var(--panel); padding: 30px; border-radius: 12px; width: 350px; text-align: center; }
-        input, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; }
+        body { 
+            margin: 0; 
+            font-family: 'Outfit', sans-serif; 
+            background: var(--bg); 
+            color: #f1f5f9;
+            background-image: radial-gradient(circle at 50% -20%, #1e1b4b, transparent);
+            overflow-x: hidden;
+        }
 
-        /* DASHBOARD */
-        #dashboard { display: none; padding: 40px; }
-        .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-        .card { background: var(--panel); padding: 30px; border-radius: 15px; border: 1px solid #334155; transition: 0.3s; cursor: pointer; }
-        .card:hover { transform: translateY(-5px); border-color: var(--primary); }
-        .card h2 { margin-top: 0; color: var(--primary); }
-        
-        .btn-main { background: var(--primary); color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        /* MODERN GLASS BUTTON */
+        .glass-btn {
+            background: var(--primary);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 12px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+        }
 
-        /* MEETING VIEW */
-        #meeting-view { display: none; height: 100vh; background: black; }
+        .glass-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.5);
+        }
+
+        /* LOGIN SCREEN */
+        #auth-screen {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        .hero-text {
+            font-size: 5rem;
+            font-weight: 800;
+            background: linear-gradient(to bottom right, #fff, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0;
+            letter-spacing: -2px;
+        }
+
+        /* DASHBOARD GRID */
+        #dashboard { display: none; padding: 60px 10%; }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+            margin-top: 40px;
+        }
+
+        .modern-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            padding: 40px;
+            border-radius: 24px;
+            transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .modern-card:hover {
+            border-color: var(--primary);
+            background: rgba(30, 41, 59, 0.8);
+            transform: scale(1.02);
+        }
+
+        /* FORM INPUTS */
+        input {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border);
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            width: 100%;
+            box-sizing: border-box;
+            margin: 15px 0;
+            font-family: inherit;
+        }
+
+        /* MEETING INTERFACE */
+        #meeting-view { 
+            display: none; 
+            height: 100vh; 
+            grid-template-columns: 1fr 350px;
+            background: #000;
+        }
+
+        #video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 15px;
+            padding: 20px;
+        }
+
+        .video-box {
+            background: #111;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            border: 1px solid #222;
+        }
+
+        video { width: 100%; height: 100%; object-fit: cover; }
+
+        .controls-floating {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            padding: 12px 30px;
+            border-radius: 100px;
+            display: flex;
+            gap: 20px;
+            border: 1px solid var(--border);
+        }
     </style>
 </head>
 <body>
 
     <div id="auth-screen">
-        <h1>Zenith Nexus</h1>
-        <p>Your Academic Communication Hub</p>
-        <button class="google-btn" onclick="signInWithGoogle()">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="20">
-            Sign in with Google
-        </button>
-    </div>
-
-    <div id="profile-modal">
-        <div class="modal-content">
-            <h2>Complete Profile</h2>
-            <p>Tell us who you are</p>
-            <input type="text" id="p-name" placeholder="Full Name">
-            <select id="p-class">
-                <option value="">Select Class</option>
-                <option value="10">Class 10</option>
-                <option value="11">Class 11</option>
-                <option value="12">Class 12</option>
-            </select>
-            <input type="text" id="p-section" placeholder="Section (e.g. A, B, C)">
-            <button class="btn-main" onclick="saveProfile()">Start Learning</button>
-        </div>
+        <h1 class="hero-text">NEXUS</h1>
+        <p style="color: #94a3b8; font-size: 1.2rem; margin-bottom: 40px;">The Future of Digital Classrooms.</p>
+        <button class="glass-btn" onclick="signInWithGoogle()">Get Started — Free</button>
     </div>
 
     <div id="dashboard">
-        <div class="nav">
-            <h1>Welcome, <span id="display-name">Student</span></h1>
-            <button onclick="signOut()" style="background:none; color:#94a3b8; border:none; cursor:pointer;">Logout</button>
+        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+            <div>
+                <h2 style="font-size: 2.5rem; margin:0;">Welcome back, <span id="user-name-display" style="color:var(--primary)">...</span></h2>
+                <p style="color: #64748b;">Manage your sessions and connect with students.</p>
+            </div>
+            <button onclick="logout()" style="color:#ef4444; background:none; border:none; cursor:pointer;">Sign Out</button>
         </div>
 
-        <div class="grid">
-            <div class="card" onclick="startInstantMeeting()">
-                <h2>🚀 Instant Class</h2>
-                <p>Start a new meeting immediately and invite students.</p>
-                <button class="btn-main">Start Now</button>
+        <div class="dashboard-grid">
+            <div class="modern-card">
+                <div style="font-size: 2rem; margin-bottom: 15px;">⚡</div>
+                <h3>Instant Session</h3>
+                <p style="color:#64748b; font-size:0.9rem;">Generate a high-speed room link and start teaching now.</p>
+                <button class="glass-btn" style="width:100%; margin-top:20px;" onclick="startMeeting()">Launch Now</button>
             </div>
 
-            <div class="card" onclick="showSchedule()">
-                <h2>📅 Schedule Class</h2>
-                <p>Plan a meeting for later. Set date, time, and topic.</p>
-                <button class="btn-main" style="background:#475569">Plan Meeting</button>
+            <div class="modern-card">
+                <div style="font-size: 2rem; margin-bottom: 15px;">🗓️</div>
+                <h3>Schedule Room</h3>
+                <p style="color:#64748b; font-size:0.9rem;">Set a fixed time for Class 10/12. Auto-notifies students.</p>
+                <button class="glass-btn" style="width:100%; margin-top:20px; background:#334155;">Plan Ahead</button>
             </div>
 
-            <div class="card">
-                <h2>🔑 Join Class</h2>
-                <p>Enter a 6-digit code to enter an existing session.</p>
-                <input type="text" id="join-code" placeholder="Enter Code">
-                <button class="btn-main" style="background:#10b981">Join Room</button>
+            <div class="modern-card">
+                <div style="font-size: 2rem; margin-bottom: 15px;">🔗</div>
+                <h3>Join Classroom</h3>
+                <input type="text" id="join-room-id" placeholder="Enter 6-Digit ID">
+                <button class="glass-btn" style="width:100%; background:var(--accent);">Connect</button>
             </div>
         </div>
     </div>
 
+    <div class="controls-floating">
+        <button class="glass-btn" style="padding: 10px 20px; background:#1e293b;">Mic</button>
+        <button class="glass-btn" style="padding: 10px 20px; background:#1e293b;">Cam</button>
+        <button class="glass-btn" style="padding: 10px 20px; background:#ef4444;" onclick="location.reload()">End</button>
+    </div>
+
     <script>
-        // FIREBASE CONFIG (Paste your config here)
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT.firebaseapp.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT.appspot.com",
-            messagingSenderId: "YOUR_SENDER_ID",
-            appId: "YOUR_APP_ID"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const socket = io();
-
-        // 1. GOOGLE SIGN IN
-        function signInWithGoogle() {
-            const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider).then((result) => {
-                checkUserProfile(result.user);
-            });
-        }
-
-        // 2. CHECK PROFILE
-        function checkUserProfile(user) {
-            // In a real app, check your database (Firestore) if this UID exists
-            // For now, we show the popup to everyone for the first time
-            document.getElementById('auth-screen').style.display = 'none';
-            document.getElementById('profile-modal').style.display = 'flex';
-            document.getElementById('p-name').value = user.displayName;
-        }
-
-        // 3. SAVE PROFILE & GO TO DASHBOARD
-        function saveProfile() {
-            const name = document.getElementById('p-name').value;
-            const uClass = document.getElementById('p-class').value;
-            const section = document.getElementById('p-section').value;
-
-            if(!name || !uClass || !section) return alert("Please fill all details");
-
-            document.getElementById('profile-modal').style.display = 'none';
-            document.getElementById('dashboard').style.display = 'block';
-            document.getElementById('display-name').innerText = name;
-
-            // Auth with Socket for your Admin Sentinel
-            socket.emit('auth-user', { name, class: uClass, section, uid: auth.currentUser.uid });
-        }
-
-        // 4. DASHBOARD ACTIONS
-        function startInstantMeeting() {
-            const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-            alert("New Meeting Started! Code: " + randomCode);
-            // logic to switch to meeting-view
-        }
-
-        function showSchedule() {
-            alert("Schedule Modal Coming Soon: Select Date & Time.");
-        }
-
-        function signOut() {
-            auth.signOut().then(() => location.reload());
-        }
+        // Your Firebase and Logic go here...
     </script>
 </body>
 </html>
