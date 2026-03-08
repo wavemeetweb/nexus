@@ -7,36 +7,44 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static(__dirname));
 
-const rooms = new Map(); // roomId -> { teacher: name, students: [] }
+const activeUsers = new Map(); // socket.id -> profile
+const bannedUIDs = new Set();
 
 io.on('connection', (socket) => {
-    socket.on('join-class', ({ roomId, name, isTeacher }) => {
+    // Basic Auth for everyone
+    socket.on('auth-user', (profile) => {
+        if (bannedUIDs.has(profile.uid)) {
+            return socket.emit('kick-notice', "BANNED_GLOBALLY");
+        }
+        socket.profile = profile;
+        activeUsers.set(socket.id, profile);
+        // Alert Admin Panel
+        io.emit('admin-refresh-list', Array.from(activeSessions()));
+    });
+
+    // Classroom Logic
+    socket.on('join-room', (roomId) => {
         socket.join(roomId);
-        socket.username = name;
         socket.roomId = roomId;
-
-        if (!rooms.has(roomId)) rooms.set(roomId, { teacher: null, students: [] });
-        const room = rooms.get(roomId);
-        
-        if (isTeacher) room.teacher = socket.id;
-        else room.students.push(socket.id);
-
-        socket.to(roomId).emit('user-joined', { id: socket.id, name });
+        // First one in is host logic...
     });
 
-    // Classroom Features
-    socket.on('raise-hand', () => {
-        const room = rooms.get(socket.roomId);
-        if (room?.teacher) io.to(room.teacher).emit('student-raised-hand', { name: socket.username });
-    });
-
-    socket.on('draw-on-board', (data) => {
-        socket.to(socket.roomId).emit('board-update', data);
+    // SECRET ADMIN COMMANDS
+    socket.on('execute-global-ban', ({ targetUid, secret }) => {
+        if (secret === "VINAYAK_2026") {
+            bannedUIDs.add(targetUid);
+            io.emit('check-ban', targetUid); // Force kicks them everywhere
+        }
     });
 
     socket.on('disconnect', () => {
-        // Cleanup room logic here
+        activeUsers.delete(socket.id);
+        io.emit('admin-refresh-list', Array.from(activeSessions()));
     });
 });
 
-server.listen(3000, () => console.log('Classroom Server running on port 3000'));
+function activeSessions() {
+    return Array.from(activeUsers.values());
+}
+
+server.listen(3000, () => console.log("Nexus Server Active"));
