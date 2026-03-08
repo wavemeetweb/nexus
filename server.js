@@ -1,7 +1,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require("socket.io");
-const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
@@ -17,13 +16,12 @@ io.on('connection', (socket) => {
     socket.on('auth-user', (profile) => {
         if (bannedUIDs.has(profile.uid)) return socket.emit('kick-notice');
         socket.profile = profile;
-        io.emit('admin-update-list', Array.from(io.sockets.sockets).map(s => s.profile).filter(p => p));
+        broadcastToAdmin();
     });
 
     socket.on('join-room', (roomId) => {
         const clients = io.sockets.adapter.rooms.get(roomId)?.size || 0;
         if (clients >= 50) return socket.emit('error-msg', "Room Full (50/50)");
-
         socket.join(roomId);
         socket.roomId = roomId;
         socket.to(roomId).emit('user-connected', socket.id);
@@ -36,9 +34,121 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('disconnect', () => {
-        io.emit('admin-update-list', Array.from(io.sockets.sockets).map(s => s.profile).filter(p => p));
-    });
+    socket.on('disconnect', () => broadcastToAdmin());
 });
 
+function broadcastToAdmin() {
+    const users = Array.from(io.sockets.sockets).map(([id, s]) => s.profile).filter(p => p);
+    io.emit('admin-update-list', users);
+}
+
 server.listen(process.env.PORT || 3000);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
