@@ -3,48 +3,31 @@ const http = require('http');
 const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server);
 
 app.use(express.static(__dirname));
 
-const activeUsers = new Map(); // socket.id -> profile
-const bannedUIDs = new Set();
+const activeUsers = new Map();
+const bannedList = new Set();
 
 io.on('connection', (socket) => {
-    // Basic Auth for everyone
-    socket.on('auth-user', (profile) => {
-        if (bannedUIDs.has(profile.uid)) {
-            return socket.emit('kick-notice', "BANNED_GLOBALLY");
+    socket.on('join-room', (data) => {
+        if (bannedList.has(data.uid)) {
+            return socket.emit('error', 'YOU_ARE_BANNED');
         }
-        socket.profile = profile;
-        activeUsers.set(socket.id, profile);
-        // Alert Admin Panel
-        io.emit('admin-refresh-list', Array.from(activeSessions()));
+        socket.join(data.roomId);
+        activeUsers.set(socket.id, data);
+        console.log(`${data.name} joined room ${data.roomId}`);
     });
 
-    // Classroom Logic
-    socket.on('join-room', (roomId) => {
-        socket.join(roomId);
-        socket.roomId = roomId;
-        // First one in is host logic...
-    });
-
-    // SECRET ADMIN COMMANDS
-    socket.on('execute-global-ban', ({ targetUid, secret }) => {
-        if (secret === "VINAYAK_2026") {
-            bannedUIDs.add(targetUid);
-            io.emit('check-ban', targetUid); // Force kicks them everywhere
+    // LISTEN FOR COMMANDS FROM YOUR ADMIN SERVER
+    socket.on('internal-admin-command', (command) => {
+        if (command.type === 'BAN') {
+            bannedList.add(command.targetUid);
+            // Kick them out immediately if they are online
+            io.emit('check-ban-status', command.targetUid);
         }
-    });
-
-    socket.on('disconnect', () => {
-        activeUsers.delete(socket.id);
-        io.emit('admin-refresh-list', Array.from(activeSessions()));
     });
 });
 
-function activeSessions() {
-    return Array.from(activeUsers.values());
-}
-
-server.listen(3000, () => console.log("Nexus Server Active"));
+server.listen(3000, () => console.log("Normal School Server: Port 3000"));
