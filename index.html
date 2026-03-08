@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Zenith Nexus: Classroom</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root { --panel: #1a1c23; --accent: #0b5cff; --bg: #0f1014; }
+        body { background: var(--bg); color: white; display: flex; height: 100vh; overflow: hidden; margin: 0; }
+        
+        /* Video Grid */
+        #video-area { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; padding: 20px; align-content: center; }
+        .video-container { background: #000; border-radius: 12px; position: relative; overflow: hidden; aspect-ratio: 16/9; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .user-label { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 4px; font-size: 12px; }
+
+        /* Sidebar & Whiteboard */
+        #class-sidebar { width: 300px; background: var(--panel); border-left: 1px solid #333; display: flex; flex-direction: column; }
+        #whiteboard-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none; background: white; }
+
+        /* Controls */
+        #controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; background: rgba(0,0,0,0.8); padding: 12px 25px; border-radius: 50px; backdrop-filter: blur(10px); }
+        .btn { width: 45px; height: 45px; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center; background: #333; color: white; transition: 0.2s; }
+        .btn:hover { background: #444; }
+        .btn-end { background: #ff4757 !important; }
+        .btn-active { background: var(--accent) !important; }
+    </style>
+</head>
+<body>
+
+    <div id="video-area">
+        <div class="video-container" id="local-container">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <div class="user-label">You</div>
+        </div>
+    </div>
+
+    <canvas id="whiteboard-canvas"></canvas>
+
+    <div id="controls">
+        <button class="btn" onclick="toggleMic()"><i data-lucide="mic"></i></button>
+        <button class="btn" onclick="toggleCam()"><i data-lucide="video"></i></button>
+        <button class="btn" onclick="shareScreen()"><i data-lucide="monitor-up"></i></button>
+        <button class="btn" onclick="toggleBoard()"><i data-lucide="edit-3"></i></button>
+        <button class="btn" onclick="raiseHand()"><i data-lucide="hand"></i></button>
+        <button class="btn btn-end" onclick="leaveClass()"><i data-lucide="phone-off"></i></button>
+    </div>
+
+    <aside id="class-sidebar">
+        <div style="padding:20px; border-bottom:1px solid #333;"><h3>Class Chat</h3></div>
+        <div id="messages" style="flex:1; padding:15px; overflow-y:auto;"></div>
+        <div style="padding:15px; display:flex; gap:5px;">
+            <input type="text" id="chat-in" placeholder="Ask a question..." style="flex:1; padding:8px; border-radius:5px; border:none; background:#333; color:white;">
+            <button onclick="sendChat()" style="background:var(--accent); border:none; padding:8px 15px; border-radius:5px; color:white;">Send</button>
+        </div>
+    </aside>
+
+    <script>
+        const socket = io();
+        lucide.createIcons();
+
+        // 1. Screen Sharing Feature
+        async function shareScreen() {
+            try {
+                const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                document.getElementById('localVideo').srcObject = screenStream;
+                // In a real app, you'd replace the video track in your Peer connection here
+            } catch (err) {
+                console.error("Error sharing screen: ", err);
+            }
+        }
+
+        // 2. Whiteboard Logic
+        const canvas = document.getElementById('whiteboard-canvas');
+        const ctx = canvas.getContext('2d');
+        let drawing = false;
+
+        function toggleBoard() {
+            const board = document.getElementById('whiteboard-canvas');
+            board.style.display = board.style.display === 'block' ? 'none' : 'block';
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        canvas.onmousedown = () => drawing = true;
+        canvas.onmouseup = () => drawing = false;
+        canvas.onmousemove = (e) => {
+            if (!drawing) return;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'black';
+            ctx.lineTo(e.clientX, e.clientY);
+            ctx.stroke();
+            socket.emit('draw-on-board', { x: e.clientX, y: e.clientY });
+        };
+
+        // 3. Class Features
+        function raiseHand() {
+            socket.emit('raise-hand');
+            alert("Hand Raised! The teacher has been notified.");
+        }
+
+        socket.on('student-raised-hand', (data) => {
+            // Teacher sees a notification
+            const notification = document.createElement('div');
+            notification.innerText = `${data.name} raised their hand ✋`;
+            notification.style = "position:fixed; top:20px; right:320px; background:var(--accent); padding:10px 20px; border-radius:8px;";
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 5000);
+        });
+    </script>
+</body>
+</html>
