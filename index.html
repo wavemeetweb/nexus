@@ -3,132 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <title>Nexus | Next-Gen Learning</title>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     
     <style>
         :root { --primary: #6366f1; --accent: #10b981; --bg: #020617; --card: rgba(30, 41, 59, 0.4); --border: rgba(255, 255, 255, 0.1); }
         body { margin: 0; font-family: 'Outfit', sans-serif; background: var(--bg); color: #f8fafc; overflow-x: hidden; background-image: radial-gradient(circle at 50% -20%, #1e1b4b, transparent); }
-        
-        .glass { background: var(--card); backdrop-filter: blur(12px); border: 1px solid var(--border); border-radius: 24px; }
-        .btn { background: var(--primary); color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.3s; }
-        .btn:hover { transform: translateY(-2px); box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
-
         #auth-screen { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
         .hero-title { font-size: 5rem; font-weight: 800; background: linear-gradient(to bottom right, #fff, #6366f1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0; letter-spacing: -2px; }
-
-        #profile-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; align-items: center; justify-content: center; }
-        .modal-box { padding: 40px; width: 350px; text-align: center; }
-        input, select { background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border); color: white; padding: 15px; border-radius: 12px; width: 100%; box-sizing: border-box; margin: 10px 0; font-family: inherit; }
-
+        .btn { background: var(--primary); color: white; border: none; padding: 14px 28px; border-radius: 12px; font-weight: 600; cursor: pointer; transition: 0.3s; box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
+        .btn:disabled { background: #334155; cursor: not-allowed; opacity: 0.5; }
         #dashboard { display: none; padding: 60px 10%; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 25px; margin-top: 40px; }
-        .card { padding: 40px; transition: 0.4s; }
-        .card:hover { border-color: var(--primary); background: rgba(30, 41, 59, 0.6); }
-
-        #link-display { background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; font-size: 11px; word-break: break-all; color: var(--accent); margin: 15px 0; border: 1px dashed var(--accent); }
+        .glass { background: var(--card); backdrop-filter: blur(12px); border: 1px solid var(--border); border-radius: 24px; padding: 40px; }
     </style>
 </head>
 <body>
 
     <div id="auth-screen">
         <h1 class="hero-title">NEXUS</h1>
-        <p style="color: #94a3b8; margin-bottom: 30px;">Premium Institutional Communication Platform</p>
-        <button class="btn" style="background:white; color:black; display:flex; align-items:center; gap:10px;" onclick="login()">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="18"> Continue with Google
+        <p style="color: #94a3b8; margin-bottom: 30px;">Premium Institutional Communication</p>
+        <button id="login-btn" class="btn" style="background:white; color:black; display:flex; align-items:center; gap:10px;" onclick="login()">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="18"> 
+            <span id="btn-text">Continue with Google</span>
         </button>
-    </div>
-
-    <div id="profile-modal">
-        <div class="modal-box glass">
-            <h2>Complete Profile</h2>
-            <input type="text" id="p-name" placeholder="Full Name">
-            <select id="p-class">
-                <option value="10">Class 10</option><option value="11">Class 11</option><option value="12">Class 12</option>
-            </select>
-            <input type="text" id="p-section" placeholder="Section (e.g. A)">
-            <button class="btn" style="width:100%; margin-top:10px;" onclick="saveProfile()">Enter Nexus</button>
-        </div>
+        <p id="debug-log" style="font-size: 10px; color: #475569; margin-top: 20px;"></p>
     </div>
 
     <div id="dashboard">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h1>Welcome, <span id="user-display" style="color:var(--primary)">...</span></h1>
-            <button onclick="location.reload()" style="background:none; border:none; color:#ef4444; cursor:pointer;">Logout</button>
-        </div>
-
-        <div class="grid">
-            <div class="card glass">
-                <h3>🚀 Instant Meeting</h3>
-                <p style="color:#64748b;">Start a 50-person room immediately.</p>
-                <button class="btn" style="width:100%; margin-top:15px;" onclick="startMeeting()">Generate Room</button>
-                <div id="link-area" style="display:none;">
-                    <div id="link-display"></div>
-                    <button class="btn" style="width:100%; background:var(--accent); font-size:12px;" onclick="copyLink()">Copy Link</button>
-                </div>
-            </div>
-
-            <div class="card glass">
-                <h3>🔗 Join Class</h3>
-                <input type="text" id="join-id" placeholder="Enter 6-Digit Code">
-                <button class="btn" style="width:100%; background:var(--accent);">Join Now</button>
-            </div>
+        <h1>Welcome, <span id="user-display" style="color:var(--primary)">...</span></h1>
+        <div class="glass">
+            <h3>Meeting Control</h3>
+            <button class="btn" onclick="startMeeting()">Generate Invite Link</button>
+            <div id="link-area" style="display:none; margin-top:20px; color:var(--accent); font-family:monospace;"></div>
         </div>
     </div>
 
     <script>
-        // FIREBASE CONFIG - REPLACE WITH YOURS
-        const firebaseConfig = { apiKey: "AI...", authDomain: "...", projectId: "...", storageBucket: "...", messagingSenderId: "...", appId: "..." };
+        // 1. YOUR CONFIG APPLIED
+        const firebaseConfig = {
+            apiKey: "AIzaSyBBXlMsVKCVZg7wkw2CjWeetnGkpINV_M4",
+            authDomain: "webnexus-cdc47.firebaseapp.com",
+            projectId: "webnexus-cdc47",
+            storageBucket: "webnexus-cdc47.firebasestorage.app",
+            messagingSenderId: "185823698270",
+            appId: "1:185823698270:web:b92eb6507a6974e46043cf",
+            measurementId: "G-59DS94R3BX"
+        };
+
+        // 2. INITIALIZATION
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
         const socket = io();
 
+        // 3. LOGIN LOGIC
         async function login() {
+            const btn = document.getElementById('login-btn');
+            const btnText = document.getElementById('btn-text');
+            const debug = document.getElementById('debug-log');
+            
+            btn.disabled = true;
+            btnText.innerText = "Connecting...";
+
             const provider = new firebase.auth.GoogleAuthProvider();
-            const result = await auth.signInWithPopup(provider);
-            const doc = await db.collection("students").doc(result.user.uid).get();
-            if (doc.exists) { launch(doc.data()); } 
-            else { 
+            provider.setCustomParameters({ prompt: 'select_account' });
+
+            try {
+                const result = await auth.signInWithPopup(provider);
+                const user = result.user;
+                
+                // Check Firestore for user profile
+                const doc = await db.collection("students").doc(user.uid).get();
+                
                 document.getElementById('auth-screen').style.display = 'none';
-                document.getElementById('profile-modal').style.display = 'flex';
-                document.getElementById('p-name').value = result.user.displayName;
+                document.getElementById('dashboard').style.display = 'block';
+                document.getElementById('user-display').innerText = user.displayName;
+
+                socket.emit('auth-user', { name: user.displayName, uid: user.uid });
+
+            } catch (error) {
+                btn.disabled = false;
+                btnText.innerText = "Continue with Google";
+                debug.innerText = "Last Error: " + error.code;
+                
+                if (error.code === 'auth/popup-blocked') {
+                    alert("Please allow popups for this site!");
+                } else if (error.code === 'auth/unauthorized-domain') {
+                    alert("DOMAIN ERROR: Make sure 'onrender.com' is in Firebase Authorized Domains.");
+                } else {
+                    alert("Login Failed: " + error.message);
+                }
             }
-        }
-
-        async function saveProfile() {
-            const data = { uid: auth.currentUser.uid, name: document.getElementById('p-name').value, class: document.getElementById('p-class').value, section: document.getElementById('p-section').value };
-            await db.collection("students").doc(data.uid).set(data);
-            launch(data);
-        }
-
-        function launch(data) {
-            document.getElementById('auth-screen').style.display = 'none';
-            document.getElementById('profile-modal').style.display = 'none';
-            document.getElementById('dashboard').style.display = 'block';
-            document.getElementById('user-display').innerText = data.name;
-            socket.emit('auth-user', data);
         }
 
         function startMeeting() {
             const id = Math.random().toString(36).substr(2, 6).toUpperCase();
             const link = window.location.origin + "?room=" + id;
-            document.getElementById('link-display').innerText = link;
-            document.getElementById('link-area').style.display = 'block';
+            const area = document.getElementById('link-area');
+            area.innerText = "INVITE LINK: " + link;
+            area.style.display = 'block';
         }
-
-        function copyLink() {
-            navigator.clipboard.writeText(document.getElementById('link-display').innerText);
-            alert("Copied! Send this to your class.");
-        }
-
-        window.onload = () => {
-            const room = new URLSearchParams(window.location.search).get('room');
-            if(room) document.getElementById('join-id').value = room;
-        };
     </script>
 </body>
 </html>
