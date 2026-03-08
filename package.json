@@ -1,7 +1,6 @@
 {
-  "name": "zenith-nexus",
+  "name": "nexus-main-engine",
   "version": "1.0.0",
-  "description": "Virtual Classroom with Admin Sentinel",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
