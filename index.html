@@ -1,106 +1,156 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Zenith Nexus | Virtual School</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zenith Nexus | Smart Classroom</title>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+    
     <style>
-        :root { --accent: #2563eb; --danger: #ef4444; --bg: #0f172a; }
-        body { margin: 0; font-family: sans-serif; background: var(--bg); color: white; overflow: hidden; }
+        :root { --primary: #2563eb; --bg: #0f172a; --panel: #1e293b; --text: #f8fafc; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
         
-        /* Dashboard/Lobby */
-        #lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
-        .box { background: #1e293b; padding: 2rem; border-radius: 12px; text-align: center; }
-        input { padding: 12px; width: 250px; border-radius: 6px; border: none; margin: 10px 0; }
+        /* AUTH SECTION */
+        #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        .google-btn { background: white; color: #444; padding: 12px 24px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold; display: flex; align-items: center; gap: 10px; }
+
+        /* POPUP MODAL */
+        #profile-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 100; align-items: center; justify-content: center; }
+        .modal-content { background: var(--panel); padding: 30px; border-radius: 12px; width: 350px; text-align: center; }
+        input, select { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: white; }
+
+        /* DASHBOARD */
+        #dashboard { display: none; padding: 40px; }
+        .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .card { background: var(--panel); padding: 30px; border-radius: 15px; border: 1px solid #334155; transition: 0.3s; cursor: pointer; }
+        .card:hover { transform: translateY(-5px); border-color: var(--primary); }
+        .card h2 { margin-top: 0; color: var(--primary); }
         
-        /* Meeting Interface */
-        #meeting { display: none; height: 100vh; grid-template-columns: 1fr 300px; }
-        #video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; padding: 20px; }
-        
-        /* Sidebar */
-        #sidebar { background: #1e293b; border-left: 1px solid #334155; padding: 20px; }
-        
-        /* Action Bar (Mute, Video, End) */
-        .controls { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); 
-                    background: #1e293b; padding: 15px 30px; border-radius: 50px; display: flex; gap: 20px; }
-        .btn { border: none; padding: 12px; border-radius: 50%; cursor: pointer; color: white; font-weight: bold; }
-        .btn-mute { background: #475569; }
-        .btn-end { background: var(--danger); }
-        .active-red { background: var(--danger) !important; }
+        .btn-main { background: var(--primary); color: white; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; }
+
+        /* MEETING VIEW */
+        #meeting-view { display: none; height: 100vh; background: black; }
     </style>
 </head>
 <body>
 
-    <div id="lobby">
-        <div class="box">
-            <h1>Zenith Nexus</h1>
-            <input type="text" id="u-name" placeholder="Your Name">
-            <input type="text" id="r-code" placeholder="Classroom Code">
-            <button onclick="enterMeeting()" style="background:var(--accent); color:white; border:none; padding:12px 30px; border-radius:6px; cursor:pointer;">Enter Class</button>
+    <div id="auth-screen">
+        <h1>Zenith Nexus</h1>
+        <p>Your Academic Communication Hub</p>
+        <button class="google-btn" onclick="signInWithGoogle()">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="20">
+            Sign in with Google
+        </button>
+    </div>
+
+    <div id="profile-modal">
+        <div class="modal-content">
+            <h2>Complete Profile</h2>
+            <p>Tell us who you are</p>
+            <input type="text" id="p-name" placeholder="Full Name">
+            <select id="p-class">
+                <option value="">Select Class</option>
+                <option value="10">Class 10</option>
+                <option value="11">Class 11</option>
+                <option value="12">Class 12</option>
+            </select>
+            <input type="text" id="p-section" placeholder="Section (e.g. A, B, C)">
+            <button class="btn-main" onclick="saveProfile()">Start Learning</button>
         </div>
     </div>
 
-    <div id="meeting">
-        <div id="video-grid">
-            <video id="local-video" autoplay muted playsinline style="width:100%; border-radius:10px; background:black;"></video>
+    <div id="dashboard">
+        <div class="nav">
+            <h1>Welcome, <span id="display-name">Student</span></h1>
+            <button onclick="signOut()" style="background:none; color:#94a3b8; border:none; cursor:pointer;">Logout</button>
         </div>
 
-        <div id="sidebar">
-            <h3>Participants</h3>
-            <div id="p-list"></div>
-        </div>
+        <div class="grid">
+            <div class="card" onclick="startInstantMeeting()">
+                <h2>🚀 Instant Class</h2>
+                <p>Start a new meeting immediately and invite students.</p>
+                <button class="btn-main">Start Now</button>
+            </div>
 
-        <div class="controls">
-            <button class="btn btn-mute" id="mic-btn" onclick="toggleMic()">Mic</button>
-            <button class="btn btn-mute" id="cam-btn" onclick="toggleCam()">Cam</button>
-            <button class="btn btn-end" onclick="endCall()">End Call</button>
+            <div class="card" onclick="showSchedule()">
+                <h2>📅 Schedule Class</h2>
+                <p>Plan a meeting for later. Set date, time, and topic.</p>
+                <button class="btn-main" style="background:#475569">Plan Meeting</button>
+            </div>
+
+            <div class="card">
+                <h2>🔑 Join Class</h2>
+                <p>Enter a 6-digit code to enter an existing session.</p>
+                <input type="text" id="join-code" placeholder="Enter Code">
+                <button class="btn-main" style="background:#10b981">Join Room</button>
+            </div>
         </div>
     </div>
 
     <script>
+        // FIREBASE CONFIG (Paste your config here)
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
         const socket = io();
-        let localStream;
-        let myUID = "ID-" + Math.random().toString(36).substr(2, 7);
 
-        async function enterMeeting() {
-            const name = document.getElementById('u-name').value;
-            const room = document.getElementById('r-code').value;
-            if(!name || !room) return alert("Fill all fields");
-
-            // Switch UI
-            document.getElementById('lobby').style.display = 'none';
-            document.getElementById('meeting').style.display = 'grid';
-
-            // Hardware Start
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('local-video').srcObject = localStream;
-
-            // Auth & Join
-            socket.emit('auth-user', { name, uid: myUID, class: "10", section: "A" });
-            socket.emit('join-room', room);
+        // 1. GOOGLE SIGN IN
+        function signInWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).then((result) => {
+                checkUserProfile(result.user);
+            });
         }
 
-        function toggleMic() {
-            const audio = localStream.getAudioTracks()[0];
-            audio.enabled = !audio.enabled;
-            document.getElementById('mic-btn').classList.toggle('active-red', !audio.enabled);
+        // 2. CHECK PROFILE
+        function checkUserProfile(user) {
+            // In a real app, check your database (Firestore) if this UID exists
+            // For now, we show the popup to everyone for the first time
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('profile-modal').style.display = 'flex';
+            document.getElementById('p-name').value = user.displayName;
         }
 
-        function toggleCam() {
-            const video = localStream.getVideoTracks()[0];
-            video.enabled = !video.enabled;
-            document.getElementById('cam-btn').classList.toggle('active-red', !video.enabled);
+        // 3. SAVE PROFILE & GO TO DASHBOARD
+        function saveProfile() {
+            const name = document.getElementById('p-name').value;
+            const uClass = document.getElementById('p-class').value;
+            const section = document.getElementById('p-section').value;
+
+            if(!name || !uClass || !section) return alert("Please fill all details");
+
+            document.getElementById('profile-modal').style.display = 'none';
+            document.getElementById('dashboard').style.display = 'block';
+            document.getElementById('display-name').innerText = name;
+
+            // Auth with Socket for your Admin Sentinel
+            socket.emit('auth-user', { name, class: uClass, section, uid: auth.currentUser.uid });
         }
 
-        function endCall() {
-            location.reload();
+        // 4. DASHBOARD ACTIONS
+        function startInstantMeeting() {
+            const randomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+            alert("New Meeting Started! Code: " + randomCode);
+            // logic to switch to meeting-view
         }
 
-        socket.on('force-check-ban', (uid) => {
-            if(myUID === uid) {
-                alert("BANNED BY ADMIN");
-                location.href = "about:blank";
-            }
-        });
+        function showSchedule() {
+            alert("Schedule Modal Coming Soon: Select Date & Time.");
+        }
+
+        function signOut() {
+            auth.signOut().then(() => location.reload());
+        }
     </script>
 </body>
 </html>
