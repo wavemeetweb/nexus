@@ -497,11 +497,11 @@ body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh
     <!-- Image upload -->
     <div class="deco-section">
       <div class="deco-section-label">Or upload a small image</div>
-      <div class="img-upload-area" id="img-upload-area">
+      <label for="img-file-input" class="img-upload-area" id="img-upload-area" style="display:block;cursor:pointer">
         <span>🖼️</span>
-        <p>Click to upload image (PNG, JPG, GIF — max 200KB)</p>
-        <input type="file" id="img-file-input" accept="image/*" style="display:none">
-      </div>
+        <p>Click here to upload image (PNG, JPG, GIF — max 200KB)</p>
+      </label>
+      <input type="file" id="img-file-input" accept="image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
       <div class="img-preview-wrap" id="img-previews"></div>
     </div>
 
@@ -1381,7 +1381,6 @@ $('deco-home-btn').addEventListener('click',openDecoModal);
 $('deco-cancel-btn').addEventListener('click',()=>$('deco-modal').classList.remove('show'));
 $('deco-save-btn').addEventListener('click',saveDecoAndClose);
 $('clear-deco-btn').addEventListener('click',clearDeco);
-$('img-upload-area').addEventListener('click',()=>$('img-file-input').click());
 $('img-file-input').addEventListener('change',e=>{
   const file=e.target.files[0]; if(!file)return;
   if(file.size>200*1024){toast('⚠️ Image too large — max 200KB');return;}
