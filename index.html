@@ -497,11 +497,18 @@ body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh
     <!-- Image upload -->
     <div class="deco-section">
       <div class="deco-section-label">Or upload a small image</div>
-      <label for="img-file-input" class="img-upload-area" id="img-upload-area" style="display:block;cursor:pointer">
-        <span>🖼️</span>
-        <p>Click here to upload image (PNG, JPG, GIF — max 200KB)</p>
-      </label>
-      <input type="file" id="img-file-input" accept="image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px">
+      <input type="file" id="img-file-input" accept="image/*" style="display:none">
+      <button onclick="document.getElementById('img-file-input').click()" style="
+        width:100%;padding:16px;border-radius:12px;
+        background:linear-gradient(135deg,rgba(108,99,255,.2),rgba(48,209,88,.15));
+        border:2px dashed rgba(108,99,255,.5);color:#a09bff;
+        font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;
+        cursor:pointer;display:flex;align-items:center;justify-content:center;
+        gap:10px;transition:all .2s;margin-bottom:12px
+      " onmouseover="this.style.background='linear-gradient(135deg,rgba(108,99,255,.3),rgba(48,209,88,.25))'"
+         onmouseout="this.style.background='linear-gradient(135deg,rgba(108,99,255,.2),rgba(48,209,88,.15))'">
+        📁 Tap to Upload Image
+      </button>
       <div class="img-preview-wrap" id="img-previews"></div>
     </div>
 
