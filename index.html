@@ -575,13 +575,31 @@ const db   = getFirestore(fbApp);
 const gp   = new GoogleAuthProvider();
 gp.addScope('profile'); gp.addScope('email');
 
-/* ── WebRTC config (Google STUN) ── */
+/* ── WebRTC config — STUN + TURN for real connections across networks ── */
 const RTC = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-  ]
+    { urls: 'stun:stun3.l.google.com:19302' },
+    // Free TURN relay — needed when people are on different networks/ISPs
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+  ],
+  iceCandidatePoolSize: 10
 };
 
 /* ── App state ── */
@@ -756,6 +774,10 @@ getRedirectResult(auth).then(async r => {
 onAuthStateChanged(auth, async user => {
   currentUser = user;
   if (user) {
+    // Never interrupt an active meeting
+    if ($('meeting-screen').classList.contains('active')) {
+      updateHdr(user); return;
+    }
     if (!user.emailVerified) {
       if ($('verify-screen').classList.contains('active')) return;
       await reload(user).catch(() => {});
@@ -764,9 +786,15 @@ onAuthStateChanged(auth, async user => {
       }
     }
     updateHdr(user);
-    show('home-screen');
+    // Only go home if on auth or verify screen
+    if ($('auth-screen').classList.contains('active') ||
+        $('verify-screen').classList.contains('active')) {
+      show('home-screen');
+    }
     clearA(); setBusy(false);
   } else {
+    // Signed out — leave meeting cleanly first if in one
+    if (meetingId) leaveMeeting();
     show('auth-screen');
   }
 });
@@ -834,7 +862,7 @@ async function checkVerified() {
 }
 
 async function afterVerified(u) {
-  try { await updateDoc(doc(db,'users',u.uid), { emailVerified: true }); } catch(e) {}
+  try { await setDoc(doc(db,'users',u.uid), { emailVerified: true }, { merge: true }); } catch(e) {}
   updateHdr(u); pendingUser = null; stopPoll(); stopResendCD();
   show('home-screen'); toast('✅ Welcome to NEXUS!');
 }
@@ -1217,19 +1245,17 @@ function removePeer(uid) {
    FIRESTORE LISTENERS IN MEETING
 ════════════════════════════════════ */
 function listenParticipants() {
-  const myUid = currentUser.uid;
   const u = onSnapshot(
     collection(db, mtgPath('participants')),
     snap => {
-      snap.docChanges().forEach(async ch => {
+      snap.docChanges().forEach(ch => {
         const p = ch.doc.data();
-        if (p.uid === myUid) return;
+        if (p.uid === currentUser.uid) return;
 
         if (ch.type === 'added' && p.active !== false) {
+          // Just track them — new joiners will call us via initiateCall
           partMap[p.uid] = p;
-          if (!peers[p.uid] && !connecting.has(p.uid) && myUid > p.uid) {
-            await initiateCall(p.uid);
-          }
+          updateParts();
         }
 
         if ((ch.type === 'modified' && p.active === false) || ch.type === 'removed') {
@@ -1406,38 +1432,41 @@ async function toggleScr() {
 /* ════════════════════════════════════
    LEAVE MEETING
 ════════════════════════════════════ */
-async function leaveMeeting() {
+function leaveMeeting() {
   clearInterval(timerInt);
 
-  // Close all peer connections
-  Object.values(peers).forEach(pc => pc.close());
+  // Close all peer connections immediately
+  Object.values(peers).forEach(pc => { try { pc.close(); } catch(e){} });
   Object.keys(peers).forEach(k => delete peers[k]);
 
   // Stop local stream
   stopStream(localStream); localStream = null;
 
   // Unsubscribe all Firestore listeners
-  unsubs.forEach(fn => fn()); unsubs.length = 0;
-  if (chatUnsub) { chatUnsub(); chatUnsub = null; }
+  unsubs.forEach(fn => { try { fn(); } catch(e){} }); unsubs.length = 0;
+  if (chatUnsub) { try { chatUnsub(); } catch(e){} chatUnsub = null; }
 
-  // Mark self as inactive
+  // Fire-and-forget Firestore updates — never await, never block UI
   if (currentUser && meetingId) {
-    try {
-      await setDoc(doc(db, mtgPath('participants/' + currentUser.uid)), { active: false }, { merge: true });
-      await setDoc(doc(db, mtgPath()), { active: false, endedAt: serverTimestamp() }, { merge: true });
-    } catch(e) {}
+    const savedId = meetingId;
+    setDoc(doc(db, `meetings/${savedId}/participants/${currentUser.uid}`),
+      { active: false }, { merge: true }).catch(() => {});
+    setDoc(doc(db, `meetings/${savedId}`),
+      { active: false, endedAt: serverTimestamp() }, { merge: true }).catch(() => {});
   }
 
-  // Clear state
+  // Clear state immediately
   Object.keys(partMap).forEach(k => delete partMap[k]);
   connecting.clear();
   meetingId = null;
+  sharing = false;
 
-  // Reset UI
+  // Reset UI immediately
   $('vgrid').innerHTML = '';
   $('leave-modal').classList.remove('show');
   $('timer').textContent = '00:00';
   $('sidebar').classList.add('hidden');
+  $('scrn-ring').className = 'scrn-ring';
   sbPanel = null;
 
   show('home-screen');
@@ -1446,10 +1475,12 @@ async function leaveMeeting() {
 
 // Clean up when page closes
 window.addEventListener('beforeunload', () => {
-  if (currentUser && meetingId) {
-    setDoc(doc(db, mtgPath('participants/' + currentUser.uid)), { active: false }, { merge: true }).catch(() => {});
+  const mid = meetingId;
+  const uid = currentUser?.uid;
+  if (uid && mid) {
+    setDoc(doc(db, `meetings/${mid}/participants/${uid}`), { active: false }, { merge: true }).catch(() => {});
   }
-  Object.values(peers).forEach(pc => pc.close());
+  Object.values(peers).forEach(pc => { try { pc.close(); } catch(e){} });
   stopStream(localStream);
 });
 
