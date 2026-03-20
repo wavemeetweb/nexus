@@ -556,8 +556,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 import {
   getFirestore, collection, addDoc, onSnapshot,
-  query, orderBy, where, doc, setDoc, getDocs,
-  serverTimestamp, updateDoc, deleteDoc
+  query, orderBy, doc, setDoc, getDocs,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
 /* ── Firebase init ── */
@@ -944,12 +944,10 @@ async function joinMeeting() {
 
   // Connect to existing participants
   try {
-    const snap = await getDocs(
-      query(collection(db, mtgPath('participants')), where('active', '==', true))
-    );
+    const snap = await getDocs(collection(db, mtgPath('participants')));
     for (const d of snap.docs) {
       const p = d.data();
-      if (p.uid !== currentUser.uid) {
+      if (p.uid !== currentUser.uid && p.active !== false) {
         partMap[p.uid] = p;
         await initiateCall(p.uid);
       }
@@ -1072,7 +1070,7 @@ async function answerCall(callerUid, connId, offer) {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
-    await updateDoc(connRef, { answer: { type: answer.type, sdp: answer.sdp } });
+    await setDoc(connRef, { answer: { type: answer.type, sdp: answer.sdp } }, { merge: true });
 
     // Listen for caller ICE candidates
     const ccUnsub = onSnapshot(collection(connRef, 'callerCandidates'), snap => {
@@ -1227,16 +1225,14 @@ function listenParticipants() {
         const p = ch.doc.data();
         if (p.uid === myUid) return;
 
-        if (ch.type === 'added' && p.active) {
+        if (ch.type === 'added' && p.active !== false) {
           partMap[p.uid] = p;
-          // If we don't have a connection and our UID > theirs, we initiate
-          // (they joined simultaneously and neither saw the other)
           if (!peers[p.uid] && !connecting.has(p.uid) && myUid > p.uid) {
             await initiateCall(p.uid);
           }
         }
 
-        if ((ch.type === 'modified' && !p.active) || ch.type === 'removed') {
+        if ((ch.type === 'modified' && p.active === false) || ch.type === 'removed') {
           removePeer(p.uid);
         }
       });
@@ -1249,12 +1245,13 @@ function listenParticipants() {
 function listenIncomingCalls() {
   const myUid = currentUser.uid;
   const u = onSnapshot(
-    query(collection(db, mtgPath('connections')), where('calleeUid', '==', myUid)),
+    collection(db, mtgPath('connections')),
     snap => {
       snap.docChanges().forEach(async ch => {
         if (ch.type === 'added') {
           const data = ch.doc.data();
-          if (data.offer && !peers[data.callerUid] && !connecting.has(data.callerUid)) {
+          // Only handle calls where WE are the callee
+          if (data.calleeUid === myUid && data.offer && !peers[data.callerUid] && !connecting.has(data.callerUid)) {
             partMap[data.callerUid] = partMap[data.callerUid] || { name: 'Participant', photoURL: null };
             await answerCall(data.callerUid, ch.doc.id, data.offer);
           }
@@ -1426,8 +1423,8 @@ async function leaveMeeting() {
   // Mark self as inactive
   if (currentUser && meetingId) {
     try {
-      await updateDoc(doc(db, mtgPath('participants/' + currentUser.uid)), { active: false });
-      await updateDoc(doc(db, mtgPath()), { active: false, endedAt: serverTimestamp() });
+      await setDoc(doc(db, mtgPath('participants/' + currentUser.uid)), { active: false }, { merge: true });
+      await setDoc(doc(db, mtgPath()), { active: false, endedAt: serverTimestamp() }, { merge: true });
     } catch(e) {}
   }
 
@@ -1450,7 +1447,7 @@ async function leaveMeeting() {
 // Clean up when page closes
 window.addEventListener('beforeunload', () => {
   if (currentUser && meetingId) {
-    updateDoc(doc(db, mtgPath('participants/' + currentUser.uid)), { active: false }).catch(() => {});
+    setDoc(doc(db, mtgPath('participants/' + currentUser.uid)), { active: false }, { merge: true }).catch(() => {});
   }
   Object.values(peers).forEach(pc => pc.close());
   stopStream(localStream);
