@@ -482,8 +482,8 @@ body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh
     <div class="deco-section">
       <div class="deco-section-label">Badge Size</div>
       <div class="size-toggle">
-        <button class="sz-btn active" data-size="sm">Small</button>
-        <button class="sz-btn active" data-size="md" style="">Medium</button>
+        <button class="sz-btn" data-size="sm">Small</button>
+        <button class="sz-btn active" data-size="md">Medium</button>
         <button class="sz-btn" data-size="lg">Large</button>
       </div>
     </div>
@@ -661,6 +661,7 @@ function show(id){ SCREENS.forEach(s=>$(s).classList.toggle('active',s===id)); }
 let authMode='login', pendingUser=null;
 
 function clrA(p='auth'){ [`${p}-err`,`${p}-info`,`${p}-ok`].forEach(id=>{ const e=$(id); if(!e)return; e.textContent=''; e.classList.remove('show'); }); }
+function clrVfy(){ ['vfy-err','vfy-ok'].forEach(id=>{ const e=$(id); if(!e)return; e.textContent=''; e.classList.remove('show'); }); }
 function showA(id,msg){ const e=$(id); if(!e)return; e.textContent=msg; e.classList.add('show'); }
 function setBusy(v){ $('auth-btn').disabled=$('google-btn').disabled=v; $('auth-btn').textContent=v?'Please wait…':(authMode==='login'?'Sign In':'Create Account'); }
 
@@ -755,8 +756,9 @@ function updateHdr(u){
 let resendCD=null, pollInt=null;
 
 function goVerify(u){
-  pendingUser=u; $('vfy-email').textContent=u.email||'—'; clrA('vfy'); setVS('waiting');
-  show('verify-screen'); startResendCD(60); startPoll();
+  pendingUser=u; $('vfy-email').textContent=u.email||'—';
+  ['vfy-err','vfy-ok'].forEach(id=>{ const e=$(id); if(!e)return; e.textContent=''; e.classList.remove('show'); });
+  setVS('waiting'); show('verify-screen'); startResendCD(60); startPoll();
 }
 function setVS(s){
   $('sdot').className='sdot'+(s==='ok'?' ok':'');
@@ -768,7 +770,7 @@ function stopPoll(){ if(pollInt){clearInterval(pollInt);pollInt=null;} }
 async function checkVerified(){
   if(!pendingUser){show('auth-screen');return;}
   $('vfy-btn').disabled=true; $('vfy-btn').textContent='Checking…';
-  try{ await reload(pendingUser); if(pendingUser.emailVerified){stopPoll();setVS('ok');showA('vfy-ok','✓ Verified!');await afterVerified(pendingUser);}else{showA('vfy-err',"Not verified yet — click the link in your inbox first.");} }catch(e){showA('vfy-err',fbErr(e.code)||'Could not check.');}
+  try{ await reload(pendingUser); if(pendingUser.emailVerified){stopPoll();setVS('ok');clrVfy();showA('vfy-ok','✓ Verified!');await afterVerified(pendingUser);}else{clrVfy();showA('vfy-err',"Not verified yet — click the link in your inbox first.");} }catch(e){clrVfy();showA('vfy-err',fbErr(e.code)||'Could not check.');}
   $('vfy-btn').disabled=false; $('vfy-btn').textContent="✅ I've verified — Continue";
 }
 async function afterVerified(u){
@@ -830,15 +832,15 @@ function buildDecoModal(){
     grid.appendChild(btn);
   });
 
-  // Size buttons
+  // Size buttons — use onclick to prevent listener stacking on repeat opens
   document.querySelectorAll('.sz-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.size===(pendingDeco.size||'md'));
-    b.addEventListener('click',()=>{
+    b.classList.toggle('active', b.dataset.size===(pendingDeco.size||'md'));
+    b.onclick = ()=>{
       document.querySelectorAll('.sz-btn').forEach(x=>x.classList.remove('active'));
       b.classList.add('active');
-      pendingDeco={...pendingDeco,size:b.dataset.size};
+      pendingDeco={...pendingDeco, size:b.dataset.size};
       updateDecoPreview();
-    });
+    };
   });
 
   // Image previews from localStorage
