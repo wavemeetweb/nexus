@@ -627,12 +627,17 @@ onAuthStateChanged(auth,async user=>{
     if($('s-meeting').classList.contains('active')){updateHdr(user);return;}
     if(skipRoute)return;
     if($('s-verify').classList.contains('active'))return;
-    if(!user.emailVerified){
-      await reload(user).catch(()=>{});
-      if(!auth.currentUser?.emailVerified){pendU=user;goVerify(user,false);return;}
+
+    // Always reload to get fresh email verification status
+    await reload(user).catch(()=>{});
+    const fresh=auth.currentUser;
+
+    if(!fresh?.emailVerified){
+      pendU=fresh||user; goVerify(fresh||user,false); return;
     }
-    await loadDeco(user.uid); await loadFam();
-    updateHdr(user);
+    // Verified — load profile and go home
+    await loadDeco(fresh.uid); await loadFam();
+    updateHdr(fresh);
     if($('s-auth').classList.contains('active')||$('s-verify').classList.contains('active'))show('s-home');
     clrA();busy(false);
   }else{
@@ -651,9 +656,16 @@ function updateHdr(u){
 /* ─────────────── VERIFY ─────────────── */
 let rcdInt=null,pollInt=null;
 
-function goVerify(u,sent){
+async function goVerify(u,sent){
   pendU=u;$('vc-email').textContent=u.email||'—';clrV();setVS('wait');show('s-verify');
   if(sent)sA('ve-ok','📬 Verification email sent! Check your inbox and spam folder.');
+  // Auto-check immediately — if they verified and refreshed, skip straight through
+  try{
+    await reload(u);
+    if(auth.currentUser?.emailVerified){
+      await afterV(auth.currentUser); return;
+    }
+  }catch(e){}
   startRCD(60);startPoll();
 }
 function setVS(s){
