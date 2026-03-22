@@ -501,7 +501,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
 import {
   getFirestore, collection, addDoc, onSnapshot, query, orderBy,
-  doc, setDoc, getDocs, serverTimestamp, deleteDoc
+  doc, setDoc, getDoc, getDocs, serverTimestamp, deleteDoc
 } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
 
 /* ─── FIREBASE ─── */
@@ -595,8 +595,22 @@ async function doEmail(){
       const c=await createUserWithEmailAndPassword(auth,email,pass);
       await updateProfile(c.user,{displayName:name});
       try{await setDoc(doc(db,'users',c.user.uid),{name,email,createdAt:serverTimestamp(),emailVerified:false},{merge:true});}catch(e){}
-      try{await sendEmailVerification(c.user,{url:window.location.href});}catch(e){console.warn('sendEmailVerification:',e.message);}
-      pendU=c.user; skipRoute=false; goVerify(c.user,true);
+      // Use origin only — no query params that could get rejected by Firebase
+      let sent=false;
+      try{
+        await sendEmailVerification(c.user,{url:window.location.origin});
+        sent=true;
+      }catch(e){
+        console.warn('sendEmailVerification error:',e.code, e.message);
+        // Try again without the continue URL — works even if domain not whitelisted
+        try{
+          await sendEmailVerification(c.user);
+          sent=true;
+        }catch(e2){
+          console.warn('sendEmailVerification retry error:',e2.code,e2.message);
+        }
+      }
+      pendU=c.user; skipRoute=false; goVerify(c.user,sent);
     }
   }catch(e){skipRoute=false;const m=fbE(e.code);if(m)sA('a-err',m);}
   busy(false);
@@ -658,28 +672,71 @@ let rcdInt=null,pollInt=null;
 
 async function goVerify(u,sent){
   pendU=u;$('vc-email').textContent=u.email||'—';clrV();setVS('wait');show('s-verify');
-  if(sent)sA('ve-ok','📬 Verification email sent! Check your inbox and spam folder.');
-  // Auto-check immediately — if they verified and refreshed, skip straight through
-  try{
-    await reload(u);
-    if(auth.currentUser?.emailVerified){
-      await afterV(auth.currentUser); return;
-    }
-  }catch(e){}
-  startRCD(60);startPoll();
+  if(sent){
+    sA('ve-ok','📬 Verification email sent! Check your inbox and spam folder.');
+    // Don't reload immediately — give Firebase time to send the email
+    startRCD(60);startPoll();
+  } else {
+    // Not freshly sent — check if already verified (e.g. page refresh)
+    try{
+      await reload(auth.currentUser||u);
+      const fresh=auth.currentUser;
+      if(fresh?.emailVerified){await afterV(fresh);return;}
+    }catch(e){}
+    startRCD(30);startPoll();
+  }
 }
 function setVS(s){
   $('sdot').className='sdot'+(s==='ok'?' ok':'');
   $('stext').textContent=s==='ok'?'✓ Email verified!':'Waiting for verification…';
   if(s==='ok'){['vs2','vs3'].forEach(id=>{$(id).textContent='✓';$(id).className='vnum done';});}
 }
-function startPoll(){stopPoll();pollInt=setInterval(async()=>{if(!pendU)return stopPoll();try{await reload(pendU);if(pendU.emailVerified){stopPoll();setVS('ok');clrV();sA('ve-ok','✓ Verified! Entering NEXUS…');await afterV(pendU);}}catch(e){}},3000);}
+function startPoll(){
+  stopPoll();
+  pollInt=setInterval(async()=>{
+    if(!pendU) return stopPoll();
+    try{
+      await reload(auth.currentUser||pendU);
+      const u=auth.currentUser;
+      if(u?.emailVerified){
+        stopPoll();
+        setVS('ok');clrV();
+        sA('ve-ok','✓ Verified! Taking you in…');
+        setTimeout(()=>afterV(u), 800);
+      }
+    }catch(e){}
+  }, 2000); // poll every 2 seconds
+}
 function stopPoll(){if(pollInt){clearInterval(pollInt);pollInt=null;}}
+
+// Also check immediately when user switches back to this tab
+// (they verify email in another tab then come back)
+document.addEventListener('visibilitychange',async()=>{
+  if(document.visibilityState==='visible' && $('s-verify').classList.contains('active') && pendU){
+    try{
+      await reload(auth.currentUser||pendU);
+      const u=auth.currentUser;
+      if(u?.emailVerified){
+        stopPoll();setVS('ok');clrV();
+        sA('ve-ok','✓ Verified! Taking you in…');
+        setTimeout(()=>afterV(u),800);
+      }
+    }catch(e){}
+  }
+});
 async function checkV(){
   if(!pendU){show('s-auth');return;}
   $('vfy-btn').disabled=true;$('vfy-btn').textContent='Checking…';
-  try{await reload(pendU);if(pendU.emailVerified){stopPoll();setVS('ok');clrV();sA('ve-ok','✓ Verified!');await afterV(pendU);}else{clrV();sA('ve-err','Not verified yet — click the link in your inbox first.');}}
-  catch(e){clrV();sA('ve-err',fbE(e.code)||'Could not check. Try again.');}
+  try{
+    await reload(auth.currentUser||pendU);
+    const u=auth.currentUser;
+    if(u?.emailVerified){
+      stopPoll();setVS('ok');clrV();sA('ve-ok','✓ Verified!');
+      setTimeout(()=>afterV(u),800);
+    }else{
+      clrV();sA('ve-err','Not verified yet — click the link in your inbox first.');
+    }
+  }catch(e){clrV();sA('ve-err',fbE(e.code)||'Could not check. Try again.');}
   $('vfy-btn').disabled=false;$('vfy-btn').textContent="✅ I've verified — Continue";
 }
 async function afterV(u){
@@ -689,8 +746,19 @@ async function afterV(u){
 }
 async function resendV(){
   if(!pendU)return;$('resend-btn').disabled=true;
-  try{await sendEmailVerification(pendU,{url:window.location.href});clrV();sA('ve-ok','📬 Email resent! Check inbox and spam.');startRCD(60);}
-  catch(e){clrV();sA('ve-err',e.code==='auth/too-many-requests'?'Too many requests — wait a moment.':fbE(e.code)||'Failed.');$('resend-btn').disabled=false;}
+  try{
+    await sendEmailVerification(pendU,{url:window.location.origin});
+    clrV();sA('ve-ok','📬 Email resent! Check inbox and spam folder.');startRCD(60);
+  }catch(e){
+    // Fallback — try without continueUrl
+    try{
+      await sendEmailVerification(pendU);
+      clrV();sA('ve-ok','📬 Email resent! Check inbox and spam folder.');startRCD(60);
+    }catch(e2){
+      clrV();sA('ve-err',e2.code==='auth/too-many-requests'?'Too many requests — wait a few minutes.':fbE(e2.code)||'Failed to send.');
+      $('resend-btn').disabled=false;
+    }
+  }
 }
 function startRCD(s){stopRCD();let r=s;$('resend-btn').disabled=true;$('resend-cd').textContent=`(${r}s)`;rcdInt=setInterval(()=>{r--;if(r<=0)stopRCD();else $('resend-cd').textContent=`(${r}s)`;},1000);}
 function stopRCD(){if(rcdInt){clearInterval(rcdInt);rcdInt=null;}$('resend-btn').disabled=false;$('resend-cd').textContent='';}
@@ -700,13 +768,11 @@ function backToAuth(){stopPoll();stopRCD();pendU=null;signOut(auth).then(()=>sho
 const EMOJIS='😊😎🔥⚡🌟💎🎯🚀👑🎭🦁🐯🦊🐼🐸🦋🌈🍀🌸🎵🎮💻📱🏆💪✌️🤙👋🫶❤️🧡💛💚💙💜⭐🌙☀️🌊🌺🎂🧁🍦🌮☕🧃🎁🎈🎉🎤🎸🥁🏠✈️🛸'.split('');
 
 async function loadDeco(uid){
-  try{const s=await getDocs(collection(db,'users'));s.forEach(d=>{if(d.id===uid&&d.data().deco)myDeco={...d.data().deco};});}catch(e){}
-  // Use getDoc approach
+  if(!uid)return;
   try{
-    const {getDoc}=await import("https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js");
     const snap=await getDoc(doc(db,'users',uid));
-    if(snap.exists()&&snap.data().deco)myDeco={...snap.data().deco};
-  }catch(e){}
+    if(snap.exists()&&snap.data().deco) myDeco={...snap.data().deco};
+  }catch(e){console.warn('loadDeco:',e.message);}
 }
 
 async function saveDeco(){
@@ -810,15 +876,24 @@ async function loadFam(){
 function isFam(email){return email&&famEmails.has(email.toLowerCase());}
 async function addFam(email){
   if(!email||!CU)return;email=email.toLowerCase().trim();
-  if(famEmails.has(email)){sA('fam-ok','Already added!');return;}
-  try{await setDoc(doc(db,`users/${CU.uid}/family/${email.replace(/[.@]/g,'_')}`),{email,addedAt:serverTimestamp()});famEmails.add(email);renderFamList();famOk(`✔ Badge given to ${email}`);$('fam-inp').value='';}
-  catch(e){$('fam-err').textContent='Failed: '+e.message;$('fam-err').classList.add('show');}
+  famOk('');// clear alerts first
+  if(famEmails.has(email)){famOk('Already added!');return;}
+  try{
+    await setDoc(doc(db,`users/${CU.uid}/family/${email.replace(/[.@]/g,'_')}`),{email,addedAt:serverTimestamp()});
+    famEmails.add(email);renderFamList();famOk(`✔ Badge given to ${email}`);$('fam-inp').value='';
+  }catch(e){
+    ['fam-err','fam-ok'].forEach(id=>{$(id).textContent='';$(id).classList.remove('show');});
+    $('fam-err').textContent='Failed: '+e.message;$('fam-err').classList.add('show');
+  }
 }
 async function rmFam(email){
   try{await deleteDoc(doc(db,`users/${CU.uid}/family/${email.replace(/[.@]/g,'_')}`));famEmails.delete(email);renderFamList();famOk('Badge removed.');}
   catch(e){$('fam-err').textContent='Failed: '+e.message;$('fam-err').classList.add('show');}
 }
-function famOk(m){['fam-err','fam-ok'].forEach(id=>{$(id).textContent='';$(id).classList.remove('show');});$('fam-ok').textContent=m;$('fam-ok').classList.add('show');setTimeout(()=>$('fam-ok').classList.remove('show'),3000);}
+function famOk(m){
+  ['fam-err','fam-ok'].forEach(id=>{$(id).textContent='';$(id).classList.remove('show');});
+  if(m){$('fam-ok').textContent=m;$('fam-ok').classList.add('show');setTimeout(()=>$('fam-ok').classList.remove('show'),3000);}
+}
 function renderFamList(){
   const l=$('fam-list');l.innerHTML='';
   if(!famEmails.size){l.innerHTML='<div style="text-align:center;color:var(--t3);font-size:13px;padding:14px">No family members yet</div>';return;}
@@ -1042,7 +1117,7 @@ function addRemoteTile(uid,stream){
   vid.srcObject=stream;vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
   tile.insertBefore(vid,tile.firstChild);
   if(!stream.getVideoTracks().length)tile.querySelector('.vtile-av').style.display='flex';
-  $('vgrid').appendChild(tile);updGrid();updateParts();toast(`👋 ${p.name||'Someone'} joined`);
+  $('vgrid').appendChild(tile);updGrid();updateParts();
 }
 
 function rmPeer(uid){
@@ -1057,6 +1132,7 @@ function updGrid(){
 }
 
 function updateParts(){
+  if(!CU)return;
   const l=$('panel-p');l.innerHTML='';
   const dn=CU?.displayName||CU?.email||'You';
   const all=[{uid:CU.uid,name:dn+' (You)',photoURL:CU?.photoURL,email:CU?.email,muted:!micOn,host:true,deco:myDeco},...Object.values(partMap)];
@@ -1167,9 +1243,12 @@ function togRec(){
 /* ─────────────── SIDEBAR ─────────────── */
 function togSB(p){const sb=$('sidebar');if(sbPanel===p){sb.classList.add('hidden');sbPanel=null;}else{sbPanel=p;sb.classList.remove('hidden');switchTab(p);}}
 function switchTab(t){
-  $('panel-p').style.display=t==='p'?'flex':'none';$('panel-p').style.flexDirection='column';
+  $('panel-p').style.display=t==='p'?'flex':'none';
+  $('panel-p').style.flexDirection='column';
   $('panel-c').style.display=t==='c'?'flex':'none';
-  $('tab-p').className='sbtab'+(t==='p'?' active':'');$('tab-c').className='sbtab'+(t==='c'?' active':'');
+  $('panel-c').style.flexDirection='column';
+  $('tab-p').className='sbtab'+(t==='p'?' active':'');
+  $('tab-c').className='sbtab'+(t==='c'?' active':'');
   if(t==='c')setTimeout(()=>{const m=$('chat-msgs');m.scrollTop=m.scrollHeight;},50);
 }
 function copyLink(){const id=$('live-id').textContent;navigator.clipboard.writeText(`${location.origin}?join=${id.replace(/\s/g,'')}`).then(()=>toast('📋 Link copied!')).catch(()=>toast('ID: '+id));}
