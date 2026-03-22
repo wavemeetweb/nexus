@@ -592,25 +592,36 @@ async function doEmail(){
       if(!c.user.emailVerified){pendU=c.user;goVerify(c.user,false);busy(false);return;}
     } else {
       skipRoute=true;
-      const c=await createUserWithEmailAndPassword(auth,email,pass);
-      await updateProfile(c.user,{displayName:name});
-      try{await setDoc(doc(db,'users',c.user.uid),{name,email,createdAt:serverTimestamp(),emailVerified:false},{merge:true});}catch(e){}
-      // Use origin only — no query params that could get rejected by Firebase
-      let sent=false;
+      let cred;
       try{
-        await sendEmailVerification(c.user,{url:window.location.origin});
-        sent=true;
+        cred=await createUserWithEmailAndPassword(auth,email,pass);
       }catch(e){
-        console.warn('sendEmailVerification error:',e.code, e.message);
-        // Try again without the continue URL — works even if domain not whitelisted
+        skipRoute=false;
+        const m=fbE(e.code);if(m)sA('a-err',m);
+        busy(false);return;
+      }
+      await updateProfile(cred.user,{displayName:name}).catch(()=>{});
+      try{await setDoc(doc(db,'users',cred.user.uid),{name,email,createdAt:serverTimestamp(),emailVerified:false},{merge:true});}catch(e){}
+
+      // Send verification email — try with URL first, then without
+      let sent=false, sendErr='';
+      try{
+        await sendEmailVerification(cred.user,{url:window.location.origin});
+        sent=true;
+      }catch(e1){
+        sendErr=`(${e1.code})`;
         try{
-          await sendEmailVerification(c.user);
+          await sendEmailVerification(cred.user);
           sent=true;
         }catch(e2){
-          console.warn('sendEmailVerification retry error:',e2.code,e2.message);
+          sendErr=e2.code||e2.message||'unknown';
+          console.error('sendEmailVerification failed both attempts:',e2.code,e2.message);
         }
       }
-      pendU=c.user; skipRoute=false; goVerify(c.user,sent);
+
+      pendU=cred.user;
+      skipRoute=false;
+      goVerify(cred.user, sent, sendErr);
     }
   }catch(e){skipRoute=false;const m=fbE(e.code);if(m)sA('a-err',m);}
   busy(false);
@@ -641,19 +652,16 @@ onAuthStateChanged(auth,async user=>{
     if($('s-meeting').classList.contains('active')){updateHdr(user);return;}
     if(skipRoute)return;
     if($('s-verify').classList.contains('active'))return;
-
-    // Always reload to get fresh email verification status
-    await reload(user).catch(()=>{});
-    const fresh=auth.currentUser;
-
-    if(!fresh?.emailVerified){
-      pendU=fresh||user; goVerify(fresh||user,false); return;
+    // Reload to get fresh verification status
+    try{ await user.reload(); }catch(e){}
+    const fresh=auth.currentUser||user;
+    if(!fresh.emailVerified){
+      pendU=fresh; goVerify(fresh, false, ''); return;
     }
-    // Verified — load profile and go home
     await loadDeco(fresh.uid); await loadFam();
     updateHdr(fresh);
-    if($('s-auth').classList.contains('active')||$('s-verify').classList.contains('active'))show('s-home');
-    clrA();busy(false);
+    if($('s-auth').classList.contains('active')||$('s-verify').classList.contains('active')) show('s-home');
+    clrA(); busy(false);
   }else{
     if(meetId)leaveMtg();
     show('s-auth');
@@ -670,74 +678,83 @@ function updateHdr(u){
 /* ─────────────── VERIFY ─────────────── */
 let rcdInt=null,pollInt=null;
 
-async function goVerify(u,sent){
-  pendU=u;$('vc-email').textContent=u.email||'—';clrV();setVS('wait');show('s-verify');
+async function goVerify(u, sent, sendErr){
+  pendU=u;
+  $('vc-email').textContent=u.email||'—';
+  clrV(); setVS('wait'); show('s-verify');
+
   if(sent){
     sA('ve-ok','📬 Verification email sent! Check your inbox and spam folder.');
-    // Don't reload immediately — give Firebase time to send the email
-    startRCD(60);startPoll();
+  } else if(sendErr){
+    // Email failed to send — tell the user exactly why
+    sA('ve-err',`⚠️ Could not send email (${sendErr}). Click "Resend email" below, or go to Firebase Console → Auth → Settings → Authorized domains and add your site URL.`);
   } else {
-    // Not freshly sent — check if already verified (e.g. page refresh)
+    // Page refresh / login with unverified account — check immediately
     try{
-      await reload(auth.currentUser||u);
-      const fresh=auth.currentUser;
-      if(fresh?.emailVerified){await afterV(fresh);return;}
+      await u.reload();
+      if(u.emailVerified){ await afterV(u); return; }
     }catch(e){}
-    startRCD(30);startPoll();
   }
+  startRCD(sent ? 60 : 10);
+  startPoll();
 }
+
 function setVS(s){
   $('sdot').className='sdot'+(s==='ok'?' ok':'');
   $('stext').textContent=s==='ok'?'✓ Email verified!':'Waiting for verification…';
   if(s==='ok'){['vs2','vs3'].forEach(id=>{$(id).textContent='✓';$(id).className='vnum done';});}
 }
+
 function startPoll(){
   stopPoll();
   pollInt=setInterval(async()=>{
     if(!pendU) return stopPoll();
     try{
-      await reload(auth.currentUser||pendU);
-      const u=auth.currentUser;
-      if(u?.emailVerified){
+      // reload() mutates pendU in-place — check pendU.emailVerified directly after
+      await pendU.reload();
+      if(pendU.emailVerified){
         stopPoll();
-        setVS('ok');clrV();
-        sA('ve-ok','✓ Verified! Taking you in…');
-        setTimeout(()=>afterV(u), 800);
+        setVS('ok'); clrV();
+        sA('ve-ok','✓ Email verified! Taking you in…');
+        setTimeout(()=>afterV(pendU), 800);
       }
-    }catch(e){}
-  }, 2000); // poll every 2 seconds
+    }catch(e){ /* ignore transient errors */ }
+  }, 2000);
 }
 function stopPoll(){if(pollInt){clearInterval(pollInt);pollInt=null;}}
 
-// Also check immediately when user switches back to this tab
-// (they verify email in another tab then come back)
-document.addEventListener('visibilitychange',async()=>{
+// Instant check when user switches back to this tab after clicking email link
+document.addEventListener('visibilitychange', async()=>{
   if(document.visibilityState==='visible' && $('s-verify').classList.contains('active') && pendU){
     try{
-      await reload(auth.currentUser||pendU);
-      const u=auth.currentUser;
-      if(u?.emailVerified){
-        stopPoll();setVS('ok');clrV();
-        sA('ve-ok','✓ Verified! Taking you in…');
-        setTimeout(()=>afterV(u),800);
+      await pendU.reload();
+      if(pendU.emailVerified){
+        stopPoll(); setVS('ok'); clrV();
+        sA('ve-ok','✓ Email verified! Taking you in…');
+        setTimeout(()=>afterV(pendU), 800);
       }
     }catch(e){}
   }
 });
 async function checkV(){
   if(!pendU){show('s-auth');return;}
-  $('vfy-btn').disabled=true;$('vfy-btn').textContent='Checking…';
+  $('vfy-btn').disabled=true; $('vfy-btn').textContent='Checking…';
   try{
-    await reload(auth.currentUser||pendU);
-    const u=auth.currentUser;
-    if(u?.emailVerified){
-      stopPoll();setVS('ok');clrV();sA('ve-ok','✓ Verified!');
-      setTimeout(()=>afterV(u),800);
-    }else{
-      clrV();sA('ve-err','Not verified yet — click the link in your inbox first.');
+    await pendU.reload();
+    if(pendU.emailVerified){
+      stopPoll(); setVS('ok'); clrV();
+      sA('ve-ok','✓ Verified!');
+      setTimeout(()=>afterV(pendU), 800);
+    } else {
+      clrV();
+      sA('ve-err','Not verified yet — click the link in your inbox, then try again.');
     }
-  }catch(e){clrV();sA('ve-err',fbE(e.code)||'Could not check. Try again.');}
-  $('vfy-btn').disabled=false;$('vfy-btn').textContent="✅ I've verified — Continue";
+  }catch(e){
+    clrV();
+    sA('ve-err', fbE(e.code)||'Could not check. Try again.');
+  }
+  $('vfy-btn').disabled=false;
+  $('vfy-btn').textContent="✅ I've verified — Continue";
 }
 async function afterV(u){
   try{await setDoc(doc(db,'users',u.uid),{emailVerified:true},{merge:true});}catch(e){}
@@ -745,20 +762,24 @@ async function afterV(u){
   show('s-home');toast('✅ Welcome to NEXUS!');
 }
 async function resendV(){
-  if(!pendU)return;$('resend-btn').disabled=true;
-  try{
-    await sendEmailVerification(pendU,{url:window.location.origin});
-    clrV();sA('ve-ok','📬 Email resent! Check inbox and spam folder.');startRCD(60);
-  }catch(e){
-    // Fallback — try without continueUrl
-    try{
-      await sendEmailVerification(pendU);
-      clrV();sA('ve-ok','📬 Email resent! Check inbox and spam folder.');startRCD(60);
-    }catch(e2){
-      clrV();sA('ve-err',e2.code==='auth/too-many-requests'?'Too many requests — wait a few minutes.':fbE(e2.code)||'Failed to send.');
+  if(!pendU)return;
+  $('resend-btn').disabled=true;
+  let sent=false;
+  // Try with URL first
+  try{ await sendEmailVerification(pendU,{url:window.location.origin}); sent=true; }catch(e1){
+    // Fallback — no URL
+    try{ await sendEmailVerification(pendU); sent=true; }catch(e2){
+      clrV();
+      if(e2.code==='auth/too-many-requests'){
+        sA('ve-err','Too many requests — wait a few minutes then try again.');
+      } else {
+        sA('ve-err',`Failed to send email (${e2.code}). Go to Firebase Console → Auth → Settings → Authorized domains and add: ${window.location.hostname}`);
+      }
       $('resend-btn').disabled=false;
+      return;
     }
   }
+  if(sent){ clrV(); sA('ve-ok','📬 Email sent! Check your inbox and spam folder.'); startRCD(60); }
 }
 function startRCD(s){stopRCD();let r=s;$('resend-btn').disabled=true;$('resend-cd').textContent=`(${r}s)`;rcdInt=setInterval(()=>{r--;if(r<=0)stopRCD();else $('resend-cd').textContent=`(${r}s)`;},1000);}
 function stopRCD(){if(rcdInt){clearInterval(rcdInt);rcdInt=null;}$('resend-btn').disabled=false;$('resend-cd').textContent='';}
