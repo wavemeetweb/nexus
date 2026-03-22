@@ -496,19 +496,29 @@ body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh
 
     <!-- Image upload -->
     <div class="deco-section">
-      <div class="deco-section-label">Or upload a small image</div>
+      <div class="deco-section-label">Or add a small image</div>
       <input type="file" id="img-file-input" accept="image/*" style="display:none">
-      <button onclick="document.getElementById('img-file-input').click()" style="
-        width:100%;padding:16px;border-radius:12px;
-        background:linear-gradient(135deg,rgba(108,99,255,.2),rgba(48,209,88,.15));
-        border:2px dashed rgba(108,99,255,.5);color:#a09bff;
+
+      <!-- Paste area -->
+      <div id="paste-area" tabindex="0" style="
+        width:100%;padding:18px;border-radius:12px;
+        background:linear-gradient(135deg,rgba(108,99,255,.15),rgba(48,209,88,.1));
+        border:2px dashed rgba(108,99,255,.45);color:#a09bff;
         font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;
-        cursor:pointer;display:flex;align-items:center;justify-content:center;
-        gap:10px;transition:all .2s;margin-bottom:12px
-      " onmouseover="this.style.background='linear-gradient(135deg,rgba(108,99,255,.3),rgba(48,209,88,.25))'"
-         onmouseout="this.style.background='linear-gradient(135deg,rgba(108,99,255,.2),rgba(48,209,88,.15))'">
-        📁 Tap to Upload Image
-      </button>
+        cursor:pointer;text-align:center;margin-bottom:10px;
+        outline:none;transition:border-color .2s;
+      ">
+        📋 Tap here then Paste your image (Ctrl+V)
+      </div>
+
+      <button onclick="document.getElementById('img-file-input').click()" style="
+        width:100%;padding:13px;border-radius:10px;
+        background:rgba(255,255,255,.06);
+        border:1px solid var(--bdr);color:var(--t2);
+        font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;
+        cursor:pointer;margin-bottom:12px;
+      ">📁 Or tap to pick from files</button>
+
       <div class="img-preview-wrap" id="img-previews"></div>
     </div>
 
@@ -1388,6 +1398,51 @@ $('deco-home-btn').addEventListener('click',openDecoModal);
 $('deco-cancel-btn').addEventListener('click',()=>$('deco-modal').classList.remove('show'));
 $('deco-save-btn').addEventListener('click',saveDecoAndClose);
 $('clear-deco-btn').addEventListener('click',clearDeco);
+// Image paste — works when paste area is focused OR anywhere on page while modal is open
+function handleImgPaste(e){
+  if(!$('deco-modal').classList.contains('show')) return;
+  const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+  if(!items) return;
+  for(const item of items){
+    if(item.type.startsWith('image/')){
+      e.preventDefault();
+      const file = item.getAsFile();
+      if(!file) return;
+      if(file.size > 500*1024){ toast('⚠️ Image too large — max 500KB'); return; }
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const dataUrl = ev.target.result;
+        const saved = JSON.parse(sessionStorage.getItem('nexus_deco_imgs')||'[]');
+        if(saved.length >= 8){ toast('⚠️ Max 8 images'); return; }
+        saved.push(dataUrl);
+        sessionStorage.setItem('nexus_deco_imgs', JSON.stringify(saved));
+        pendingDeco = {...pendingDeco, type:'image', value:dataUrl};
+        document.querySelectorAll('.emoji-option').forEach(b=>b.classList.remove('selected'));
+        renderImgPreviews(); updateDecoPreview();
+        // Visual feedback
+        const pa = $('paste-area');
+        pa.textContent = '✅ Image pasted!';
+        pa.style.borderColor = 'var(--ok)';
+        pa.style.color = 'var(--ok)';
+        setTimeout(()=>{ pa.textContent='📋 Tap here then Paste your image (Ctrl+V)'; pa.style.borderColor='rgba(108,99,255,.45)'; pa.style.color='#a09bff'; },2000);
+      };
+      reader.readAsDataURL(file);
+      break;
+    }
+  }
+}
+
+document.addEventListener('paste', handleImgPaste);
+
+// Focus paste area on click so Ctrl+V works
+$('paste-area').addEventListener('click', function(){
+  this.focus();
+  this.style.borderColor = 'var(--ok)';
+  this.style.color = 'var(--ok)';
+  this.textContent = '✅ Ready! Now press Ctrl+V to paste';
+  setTimeout(()=>{ this.textContent='📋 Tap here then Paste your image (Ctrl+V)'; this.style.borderColor='rgba(108,99,255,.45)'; this.style.color='#a09bff'; },3000);
+});
+
 $('img-file-input').addEventListener('change',e=>{
   const file=e.target.files[0]; if(!file)return;
   if(file.size>200*1024){toast('⚠️ Image too large — max 200KB');return;}
