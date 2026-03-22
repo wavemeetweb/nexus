@@ -8,6 +8,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh;overflow:hidden}
+input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}
 :root{
   --bg1:#0d0d0f;--bg2:#16161a;--bg3:#1e1e24;--bg4:#2a2a32;
   --acc:#7c6fff;--acc2:#6459e0;--ok:#2ecc71;--err:#e74c3c;--warn:#f39c12;
@@ -132,15 +133,15 @@ body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh
 .vid-area{flex:1;padding:10px;overflow:hidden;display:flex;flex-direction:column}
 
 /* VIDEO GRID */
-.vgrid{flex:1;display:grid;gap:8px;overflow:hidden}
-.vgrid.g1{grid-template-columns:1fr}
-.vgrid.g2{grid-template-columns:1fr 1fr}
-.vgrid.g3{grid-template-columns:repeat(3,1fr)}
+.vgrid{flex:1;display:grid;gap:8px;overflow:hidden;min-height:0}
+.vgrid.g1{grid-template-columns:1fr;grid-template-rows:1fr}
+.vgrid.g2{grid-template-columns:1fr 1fr;grid-template-rows:1fr}
+.vgrid.g3{grid-template-columns:repeat(3,1fr);grid-template-rows:1fr}
 .vgrid.g4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
 .vgrid.g6{grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr}
-.vtile{position:relative;border-radius:12px;overflow:hidden;background:#111115;border:2px solid transparent;transition:border-color .25s;min-height:0}
+.vtile{position:relative;border-radius:12px;overflow:hidden;background:#111115;border:2px solid transparent;transition:border-color .25s;min-height:120px}
 .vtile.speaking{border-color:var(--ok)}
-.vtile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.vtile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000}
 .vtile.local video{transform:scaleX(-1)}
 .vtile-av{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#1a1a30,#111115)}
 .av-circle{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0}
@@ -175,8 +176,8 @@ body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh
 .part-icons .mx{color:var(--err)}
 
 /* CHAT */
-.chat-panel{flex:1;overflow:hidden;display:none;flex-direction:column}
-.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
+.chat-panel{flex:1;overflow:hidden;display:none;flex-direction:column;min-height:0}
+.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px;min-height:0}
 .cmsg{display:flex;flex-direction:column;gap:3px}
 .cmsg-hdr{display:flex;align-items:baseline;gap:7px}
 .cmsg-sndr{font-size:12px;font-weight:600;color:var(--t2);display:flex;align-items:center;gap:4px}
@@ -588,8 +589,8 @@ async function doEmail(){
   busy(true);
   try{
     if(mode==='login'){
-      const c=await signInWithEmailAndPassword(auth,email,pass);
-      if(!c.user.emailVerified){pendU=c.user;goVerify(c.user,false);busy(false);return;}
+      await signInWithEmailAndPassword(auth,email,pass);
+      // onAuthStateChanged handles routing
     } else {
       skipRoute=true;
       let cred;
@@ -601,27 +602,14 @@ async function doEmail(){
         busy(false);return;
       }
       await updateProfile(cred.user,{displayName:name}).catch(()=>{});
-      try{await setDoc(doc(db,'users',cred.user.uid),{name,email,createdAt:serverTimestamp(),emailVerified:false},{merge:true});}catch(e){}
-
-      // Send verification email — try with URL first, then without
-      let sent=false, sendErr='';
-      try{
-        await sendEmailVerification(cred.user,{url:window.location.origin});
-        sent=true;
-      }catch(e1){
-        sendErr=`(${e1.code})`;
-        try{
-          await sendEmailVerification(cred.user);
-          sent=true;
-        }catch(e2){
-          sendErr=e2.code||e2.message||'unknown';
-          console.error('sendEmailVerification failed both attempts:',e2.code,e2.message);
-        }
-      }
-
-      pendU=cred.user;
+      try{await setDoc(doc(db,'users',cred.user.uid),{name,email,createdAt:serverTimestamp()},{merge:true});}catch(e){}
       skipRoute=false;
-      goVerify(cred.user, sent, sendErr);
+      // Go straight to home — no email verification needed
+      CU=cred.user;
+      await loadDeco(cred.user.uid); await loadFam();
+      updateHdr(cred.user);
+      show('s-home');
+      toast('✅ Welcome to NEXUS, '+name+'!');
     }
   }catch(e){skipRoute=false;const m=fbE(e.code);if(m)sA('a-err',m);}
   busy(false);
@@ -651,16 +639,12 @@ onAuthStateChanged(auth,async user=>{
   if(user){
     if($('s-meeting').classList.contains('active')){updateHdr(user);return;}
     if(skipRoute)return;
-    if($('s-verify').classList.contains('active'))return;
-    // Reload to get fresh verification status
-    try{ await user.reload(); }catch(e){}
-    const fresh=auth.currentUser||user;
-    if(!fresh.emailVerified){
-      pendU=fresh; goVerify(fresh, false, ''); return;
+    // Load profile and go home — no email verification gate
+    await loadDeco(user.uid); await loadFam();
+    updateHdr(user);
+    if(!$('s-home').classList.contains('active')&&!$('s-prejoin').classList.contains('active')&&!$('s-meeting').classList.contains('active')){
+      show('s-home');
     }
-    await loadDeco(fresh.uid); await loadFam();
-    updateHdr(fresh);
-    if($('s-auth').classList.contains('active')||$('s-verify').classList.contains('active')) show('s-home');
     clrA(); busy(false);
   }else{
     if(meetId)leaveMtg();
@@ -927,12 +911,33 @@ async function goPrejoin(){
   $('pj-mi').textContent='🎤';$('pj-ml').textContent='Mute';
   $('pj-ci').textContent='📹';$('pj-cl').textContent='Stop Video';
   $('pj-camoff').style.display='none';
+
   const raw=$('mtg-inp').value.trim()||genId();
-  $('mtg-inp').value=raw;$('pj-sub').textContent='Meeting ID: '+raw;
-  $('live-id').textContent=raw;meetId=raw.replace(/\s/g,'');
+  $('mtg-inp').value=raw;
+  $('pj-sub').textContent='Meeting ID: '+raw;
+  $('live-id').textContent=raw;
+  meetId=raw.replace(/\s/g,'');
   show('s-prejoin');
-  try{pjStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});$('pj-vid').srcObject=pjStream;$('pj-camoff').style.display='none';}
-  catch(e){toast('⚠️ Camera/mic denied — you can still join without video');}
+
+  try{
+    pjStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
+    $('pj-vid').srcObject=pjStream;
+    $('pj-vid').play().catch(()=>{});
+    $('pj-camoff').style.display='none';
+  }catch(e){
+    // Try audio only
+    try{
+      pjStream=await navigator.mediaDevices.getUserMedia({video:false,audio:true});
+      camOn=false;pjCam=false;
+      $('pj-camoff').style.display='flex';
+      $('pj-ci').textContent='🚫';$('pj-cl').textContent='No Camera';
+      toast('📷 Camera blocked — joining with audio only');
+    }catch(e2){
+      pjStream=null;
+      $('pj-camoff').style.display='flex';
+      toast('⚠️ No camera or mic — please allow access in browser settings');
+    }
+  }
 }
 function backHome(){stopS(pjStream);pjStream=null;show('s-home');}
 function togPjMic(){pjMic=!pjMic;if(pjStream)pjStream.getAudioTracks().forEach(t=>t.enabled=pjMic);$('pj-mi').textContent=pjMic?'🎤':'🔇';$('pj-ml').textContent=pjMic?'Mute':'Unmute';micOn=pjMic;}
@@ -947,7 +952,12 @@ async function joinMtg(){
   try{
     await setDoc(doc(db,`meetings/${meetId}`),{id:meetId,host:CU.uid,hostName:dn,startedAt:serverTimestamp(),active:true},{merge:true});
     await setDoc(doc(db,mp('participants/'+CU.uid)),{uid:CU.uid,name:dn,email:CU.email||null,photoURL:CU.photoURL||null,deco:myDeco.type?myDeco:null,joinedAt:serverTimestamp(),active:true});
-  }catch(e){console.warn('join write:',e.message);}
+  }catch(e){
+    console.error('join write failed:',e.code,e.message);
+    if(e.code==='permission-denied'){
+      toast('⚠️ Firestore rules blocking — go to Firebase Console → Firestore → Rules and set: allow read, write: if request.auth != null');
+    }
+  }
 
   addLocalTile();
 
@@ -978,7 +988,10 @@ async function callPeer(uid){
     const u1=onSnapshot(cr,s=>{const d=s.data();if(d?.answer&&!pc.currentRemoteDescription)pc.setRemoteDescription(new RTCSessionDescription(d.answer)).catch(()=>{});});
     const u2=onSnapshot(collection(cr,'answerCandidates'),s=>{s.docChanges().forEach(c=>{if(c.type==='added')pc.addIceCandidate(new RTCIceCandidate(c.doc.data())).catch(()=>{});});});
     unsubs.push(u1,u2);
-  }catch(e){console.warn('callPeer:',e.message);}
+  }catch(e){
+    console.error('callPeer error:',e.code,e.message);
+    if(e.code==='permission-denied') toast('⚠️ Firestore rules blocking video calls — update rules in Firebase Console');
+  }
   connecting.delete(uid);
 }
 
@@ -1111,34 +1124,68 @@ function makeTile(uid,name,photo,local,deco,email){
 }
 
 function addLocalTile(){
+  // Remove existing local tile if any
+  const existing=$(`vt-${CU.uid}`);
+  if(existing)existing.remove();
+
   const dn=CU?.displayName||CU?.email||'You';
   const tile=makeTile(CU.uid,dn,CU.photoURL,true,myDeco,CU.email);
-  if(localStream){
-    const vid=document.createElement('video');vid.autoplay=true;vid.muted=true;vid.playsInline=true;
-    vid.srcObject=localStream;vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
-    if(!camOn){vid.style.display='none';tile.querySelector('.vtile-av').style.display='flex';}
+
+  if(localStream&&localStream.getVideoTracks().length>0&&camOn){
+    const vid=document.createElement('video');
+    vid.autoplay=true;vid.muted=true;vid.playsInline=true;
+    vid.setAttribute('playsinline','');
+    vid.srcObject=localStream;
+    vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000';
+    // Force play (needed on mobile/Safari)
+    vid.addEventListener('loadedmetadata',()=>vid.play().catch(()=>{}));
     tile.insertBefore(vid,tile.firstChild);
-  }else{tile.querySelector('.vtile-av').style.display='flex';}
-  $('vgrid').appendChild(tile);updGrid();updateParts();
+    tile.querySelector('.vtile-av').style.display='none';
+  }else{
+    // No camera — show avatar
+    tile.querySelector('.vtile-av').style.display='flex';
+  }
+
+  $('vgrid').appendChild(tile);
+  updGrid();
+  updateParts();
 }
 
 function addRemoteTile(uid,stream){
   const p=partMap[uid]||{};
   const ex=$(`vt-${uid}`);
+
   if(ex){
     let vid=ex.querySelector('video');
-    if(!vid){vid=document.createElement('video');vid.autoplay=true;vid.playsInline=true;vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';ex.insertBefore(vid,ex.firstChild);}
+    if(!vid){
+      vid=document.createElement('video');vid.autoplay=true;vid.playsInline=true;
+      vid.setAttribute('playsinline','');
+      vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000';
+      ex.insertBefore(vid,ex.firstChild);
+    }
     vid.srcObject=stream;
+    vid.play().catch(()=>{});
     const avEl=ex.querySelector('.vtile-av');
-    if(avEl)avEl.style.display=stream.getVideoTracks().some(t=>t.readyState==='live'&&t.enabled)?'none':'flex';
+    const hasVideo=stream.getVideoTracks().length>0;
+    if(avEl)avEl.style.display=hasVideo?'none':'flex';
     return;
   }
+
   const tile=makeTile(uid,p.name||'Participant',p.photoURL||null,false,p.deco||null,p.email||null);
-  const vid=document.createElement('video');vid.autoplay=true;vid.playsInline=true;
-  vid.srcObject=stream;vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
+  const vid=document.createElement('video');
+  vid.autoplay=true;vid.playsInline=true;
+  vid.setAttribute('playsinline','');
+  vid.srcObject=stream;
+  vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000';
+  vid.addEventListener('loadedmetadata',()=>vid.play().catch(()=>{}));
   tile.insertBefore(vid,tile.firstChild);
-  if(!stream.getVideoTracks().length)tile.querySelector('.vtile-av').style.display='flex';
-  $('vgrid').appendChild(tile);updGrid();updateParts();
+
+  const hasVideo=stream.getVideoTracks().length>0;
+  tile.querySelector('.vtile-av').style.display=hasVideo?'none':'flex';
+
+  $('vgrid').appendChild(tile);
+  updGrid();
+  updateParts();
 }
 
 function rmPeer(uid){
