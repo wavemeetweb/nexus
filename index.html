@@ -1,1430 +1,291 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXUS</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',sans-serif;background:#0d0d0f;color:#fff;height:100vh;overflow:hidden}
-input,textarea{user-select:text!important;-webkit-user-select:text!important;cursor:text}
-:root{
-  --bg1:#0d0d0f;--bg2:#16161a;--bg3:#1e1e24;--bg4:#2a2a32;
-  --acc:#7c6fff;--acc2:#6459e0;--ok:#2ecc71;--err:#e74c3c;--warn:#f39c12;
-  --t2:#a0a0b0;--t3:#55556a;
-  --bdr:rgba(255,255,255,.07);--glass:rgba(255,255,255,.07);--glass2:rgba(255,255,255,.12);
-  --sh:0 20px 60px rgba(0,0,0,.7)
-}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS - Video Conferencing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-dark: #0d0d0f;
+            --bg-card: #16161a;
+            --accent: #7c6fff;
+            --accent-hover: #6358cc;
+            --text-main: #ffffff;
+            --text-muted: #94a1b2;
+            --danger: #ef4565;
+            --success: #2cb67d;
+            --family-grad: linear-gradient(135deg, #7c6fff, #2cb67d);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'DM Sans', sans-serif; user-select: none; }
+        body { background-color: var(--bg-dark); color: var(--text-main); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* Floating Dots Background */
+        .dots-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: -1; opacity: 0.3; pointer-events: none; background-image: radial-gradient(var(--text-muted) 1px, transparent 1px); background-size: 40px 40px; animation: drift 100s linear infinite; }
+        @keyframes drift { from { background-position: 0 0; } to { background-position: 1000px 1000px; } }
 
-/* SCREENS */
-.screen{display:none!important}.screen.active{display:flex!important}
-#s-auth,#s-verify{flex-direction:column;align-items:center;justify-content:center;height:100vh;background:radial-gradient(ellipse at 60% 30%,#1a1040 0%,#0d0d0f 65%)}
-#s-home{flex-direction:column;height:100vh;background:radial-gradient(ellipse at 30% 70%,#0d1840 0%,#0d0d0f 65%)}
-#s-prejoin{flex-direction:column;height:100vh;background:#0d0d0f;align-items:center;justify-content:center;gap:20px}
-#s-meeting{flex-direction:column;height:100vh;background:#0a0a0d}
+        /* General UI */
+        input, textarea, button { font-family: inherit; outline: none; border: none; }
+        input, textarea { background: #242629; color: white; padding: 12px; border-radius: 8px; width: 100%; margin-bottom: 12px; user-select: text !important; }
+        button { background: var(--accent); color: white; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: 500; transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        button:hover { background: var(--accent-hover); }
+        button.danger { background: var(--danger); }
+        button.icon-btn { padding: 12px; border-radius: 50%; width: 48px; height: 48px; background: #242629; }
+        button.icon-btn:hover { background: #333; }
+        button.icon-btn.active { background: var(--accent); }
+        
+        .screen { display: none; height: 100%; width: 100%; flex-direction: column; }
+        .screen.active { display: flex; }
+        
+        /* Modals & Toasts */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: var(--bg-card); padding: 24px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; }
+        .toast { background: var(--accent); padding: 12px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: slideIn 0.3s forwards; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
-/* ── SHARED COMPONENTS ── */
-.card{background:rgba(255,255,255,.04);border:1px solid var(--bdr);border-radius:20px;backdrop-filter:blur(20px);box-shadow:var(--sh)}
-.btn{padding:11px 20px;border-radius:9px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;transition:all .15s}
-.btn-p{background:var(--acc);color:#fff}.btn-p:hover{background:var(--acc2);transform:translateY(-1px)}
-.btn-g{background:var(--glass);color:var(--t2);border:1px solid var(--bdr)}.btn-g:hover{background:var(--glass2);color:#fff}
-.btn-d{background:rgba(231,76,60,.15);color:var(--err);border:1px solid rgba(231,76,60,.25)}.btn-d:hover{background:rgba(231,76,60,.25)}
-.btn:disabled{opacity:.5;cursor:not-allowed;transform:none!important}
-.inp{width:100%;padding:12px 14px;background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color .15s}
-.inp:focus{border-color:var(--acc)}.inp::placeholder{color:var(--t3)}
-.lbl{display:block;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.9px;margin-bottom:7px}
-.fg{margin-bottom:15px}
-.alert{display:none;padding:10px 14px;border-radius:8px;font-size:13px;line-height:1.5;margin-bottom:14px}
-.alert.show{display:block}
-.ae{background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.3);color:#f08080}
-.ai{background:rgba(124,111,255,.12);border:1px solid rgba(124,111,255,.3);color:#b0a8ff}
-.ao{background:rgba(46,204,113,.12);border:1px solid rgba(46,204,113,.3);color:#5ddb8e}
-.sep{display:flex;align-items:center;gap:10px;color:var(--t3);font-size:12px;margin:16px 0}
-.sep::before,.sep::after{content:'';flex:1;height:1px;background:var(--bdr)}
+        /* Auth & Home */
+        .auth-container, .home-container, .prejoin-container { margin: auto; max-width: 400px; width: 90%; background: var(--bg-card); padding: 30px; border-radius: 16px; text-align: center; }
+        .auth-tabs { display: flex; margin-bottom: 20px; }
+        .auth-tab { flex: 1; padding: 10px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted); }
+        .auth-tab.active { border-color: var(--accent); color: white; }
+        .pwd-wrap { position: relative; }
+        .pwd-wrap i { position: absolute; right: 12px; top: 12px; cursor: pointer; color: var(--text-muted); }
+        
+        .header-chip { display: flex; align-items: center; gap: 10px; background: #242629; padding: 5px 15px 5px 5px; border-radius: 30px; margin: 20px auto; width: fit-content; }
+        .avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-weight: bold; object-fit: cover; }
+        .hero-actions { display: flex; gap: 10px; margin-top: 20px; }
 
-/* ── AUTH ── */
-.auth-box{width:400px;padding:40px 36px}
-.auth-logo{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800;letter-spacing:-1px;margin-bottom:28px}
-.auth-logo-ic{width:38px;height:38px;background:var(--acc);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px}
-.auth-h{font-size:24px;font-weight:700;margin-bottom:5px}
-.auth-sub{font-size:14px;color:var(--t2);margin-bottom:24px}
-.g-btn{width:100%;padding:12px;border-radius:9px;background:var(--glass);border:1px solid var(--bdr);color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s;margin-bottom:16px}
-.g-btn:hover:not(:disabled){background:var(--glass2);transform:translateY(-1px)}
-.g-btn:disabled{opacity:.5;cursor:not-allowed}
-.gic{width:18px;height:18px;flex-shrink:0}
-.pw-row{position:relative}.pw-row .inp{padding-right:42px}
-.pw-eye{position:absolute;right:0;top:0;height:100%;width:42px;background:none;border:none;cursor:pointer;color:var(--t3);font-size:15px;display:flex;align-items:center;justify-content:center}
-.pw-eye:hover{color:var(--t2)}
-.auth-foot{font-size:13px;color:var(--t2);text-align:center}
-.auth-link{color:var(--acc);cursor:pointer;font-weight:600}.auth-link:hover{text-decoration:underline}
+        /* Meeting Screen */
+        .meeting-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; background: rgba(22, 22, 26, 0.8); backdrop-filter: blur(10px); z-index: 10; }
+        .meeting-badges { display: flex; gap: 10px; font-family: 'DM Mono', monospace; font-size: 14px; }
+        .badge { background: #242629; padding: 4px 10px; border-radius: 4px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .badge.rec { color: var(--danger); display: none; }
+        .rec-dot { width: 8px; height: 8px; background: var(--danger); border-radius: 50%; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
 
-/* ── VERIFY ── */
-.verify-box{width:420px;padding:40px;text-align:center}
-.vc-icon{width:68px;height:68px;border-radius:50%;background:rgba(124,111,255,.15);border:2px solid rgba(124,111,255,.3);display:flex;align-items:center;justify-content:center;font-size:30px;margin:0 auto 20px}
-.vc-h{font-size:22px;font-weight:700;margin-bottom:8px}
-.vc-sub{font-size:14px;color:var(--t2);line-height:1.6;margin-bottom:6px}
-.vc-email{display:inline-block;background:rgba(124,111,255,.1);border:1px solid rgba(124,111,255,.2);color:#b0a8ff;font-size:13px;padding:6px 14px;border-radius:7px;margin-bottom:22px;font-family:'DM Mono',monospace;word-break:break-all}
-.vsteps{background:rgba(255,255,255,.03);border:1px solid var(--bdr);border-radius:11px;padding:16px 18px;margin-bottom:20px;text-align:left}
-.vstep{display:flex;align-items:flex-start;gap:12px;padding:7px 0}
-.vstep:not(:last-child){border-bottom:1px solid var(--bdr);padding-bottom:12px;margin-bottom:5px}
-.vnum{width:24px;height:24px;border-radius:50%;background:rgba(124,111,255,.2);border:1px solid rgba(124,111,255,.4);color:var(--acc);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
-.vnum.done{background:rgba(46,204,113,.2);border-color:rgba(46,204,113,.4);color:var(--ok)}
-.vstep-t{font-size:13px;color:var(--t2);line-height:1.5}.vstep-t strong{color:#fff;font-weight:600}
-.vstat{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--t2);background:rgba(255,255,255,.04);border:1px solid var(--bdr);border-radius:8px;padding:10px 14px;margin-bottom:18px}
-.sdot{width:8px;height:8px;border-radius:50%;background:var(--warn);flex-shrink:0;animation:sdot 1.5s ease-in-out infinite}
-.sdot.ok{background:var(--ok);animation:none}
-@keyframes sdot{0%,100%{opacity:.4}50%{opacity:1}}
-.vfy-btn{width:100%;padding:13px;background:var(--acc);color:#fff;border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:8px}
-.vfy-btn:hover:not(:disabled){background:var(--acc2);transform:translateY(-1px)}.vfy-btn:disabled{opacity:.6;cursor:not-allowed}
-.resend-row{display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:16px}
-.resend-btn{background:none;border:none;color:var(--acc);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;font-weight:500}.resend-btn:disabled{color:var(--t3);cursor:not-allowed}
-.resend-cd{font-size:12px;color:var(--t3);font-family:'DM Mono',monospace}
-.vfy-back{background:none;border:none;color:var(--t3);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:5px;margin:0 auto}.vfy-back:hover{color:var(--t2)}
+        .meeting-body { display: flex; flex: 1; overflow: hidden; }
+        .video-area { flex: 1; display: flex; flex-direction: column; position: relative; }
+        .video-grid { flex: 1; display: grid; gap: 10px; padding: 10px; transition: all 0.3s; }
+        .video-wrapper { position: relative; background: #000; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; border: 2px solid transparent; }
+        .video-wrapper.speaking { border-color: var(--success); animation: borderPulse 1s infinite alternate; }
+        .video-wrapper.sharing { border-color: var(--success); }
+        @keyframes borderPulse { from { box-shadow: 0 0 5px var(--success); } to { box-shadow: 0 0 15px var(--success); } }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        video.mirrored { transform: scaleX(-1); }
+        .video-overlay { position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 6px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+        .fam-badge { background: var(--family-grad); border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; }
+        .deco-img { position: absolute; top: 10px; right: 10px; z-index: 2; pointer-events: none; }
+        .deco-sm { width: 30px; height: 30px; font-size: 30px; }
+        .deco-md { width: 50px; height: 50px; font-size: 50px; }
+        .deco-lg { width: 80px; height: 80px; font-size: 80px; }
 
-/* ── HOME ── */
-.home-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--bdr);z-index:10}
-.logo{display:flex;align-items:center;gap:9px;font-size:20px;font-weight:800;letter-spacing:-1px}
-.logo-ic{width:34px;height:34px;background:var(--acc);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px}
-.hdr-r{display:flex;gap:9px;align-items:center}
-.chip{display:flex;align-items:center;gap:9px;background:var(--glass);border:1px solid var(--bdr);border-radius:50px;padding:5px 14px 5px 5px}
-.chip-av{width:28px;height:28px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;overflow:hidden}
-.chip-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-.chip-nm{font-size:13px;font-weight:500;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hdr-btn{padding:8px 14px;border-radius:8px;border:1px solid var(--bdr);background:var(--glass);color:var(--t2);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
-.hdr-btn:hover{background:var(--glass2);color:#fff}
-.hdr-btn.acc{border-color:rgba(124,111,255,.4);background:rgba(124,111,255,.1);color:#b0a8ff}.hdr-btn.acc:hover{background:rgba(124,111,255,.2);color:#fff}
-.home-body{flex:1;display:flex;align-items:center;justify-content:center;gap:50px;padding:40px;z-index:1}
-.home-hero{flex:1;max-width:480px}
-.home-hero h1{font-size:50px;font-weight:800;line-height:1.05;letter-spacing:-3px;margin-bottom:16px;background:linear-gradient(135deg,#fff 0%,#9d95ff 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.home-hero p{font-size:16px;color:var(--t2);line-height:1.6;margin-bottom:36px}
-.hero-btns{display:flex;gap:12px}
-.hbtn{padding:13px 26px;border-radius:10px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;transition:all .2s;display:flex;align-items:center;gap:8px}
-.hbtn-p{background:var(--acc);color:#fff;box-shadow:0 6px 20px rgba(124,111,255,.35)}.hbtn-p:hover{background:var(--acc2);transform:translateY(-2px)}
-.hbtn-s{background:var(--glass);color:#fff;border:1px solid var(--bdr)}.hbtn-s:hover{background:var(--glass2);transform:translateY(-2px)}
-.join-card{padding:32px;width:360px}
-.join-card h3{font-size:18px;font-weight:700;margin-bottom:20px}
+        /* Sidebar & Controls */
+        .sidebar { width: 320px; background: var(--bg-card); display: none; flex-direction: column; border-left: 1px solid #242629; }
+        .sidebar.active { display: flex; }
+        .tabs { display: flex; border-bottom: 1px solid #242629; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; color: var(--text-muted); }
+        .tab.active { color: white; border-bottom: 2px solid var(--accent); }
+        .tab-content { flex: 1; overflow-y: auto; padding: 15px; display: none; }
+        .tab-content.active { display: block; }
+        
+        .chat-messages { height: calc(100% - 60px); overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; gap: 10px; }
+        .msg { background: #242629; padding: 8px 12px; border-radius: 8px; width: fit-content; max-width: 90%; }
+        .msg-header { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+        .chat-input { display: flex; gap: 5px; }
+        
+        .participant-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #242629; }
+        .participant-info { display: flex; align-items: center; gap: 10px; }
 
-/* ── PRE-JOIN ── */
-.pj-h{font-size:24px;font-weight:700;letter-spacing:-.5px;text-align:center}
-.pj-sub{font-size:14px;color:var(--t2);margin-top:5px;text-align:center}
-.pj-vwrap{position:relative;width:500px;height:290px;border-radius:14px;overflow:hidden;background:#000;box-shadow:var(--sh)}
-#pj-vid{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
-.pj-camoff{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(0,0,0,.8);font-size:14px;color:var(--t2)}
-.pj-camoff span{font-size:44px}
-.pj-ctrls{display:flex;gap:12px}
-.pj-acts{display:flex;gap:12px}
+        .control-bar { height: 80px; background: var(--bg-card); display: flex; align-items: center; justify-content: center; gap: 15px; z-index: 10; border-top: 1px solid #242629; }
 
-/* ── MEETING ── */
-.mtg-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 18px;background:var(--bg1);border-bottom:1px solid var(--bdr);height:52px;flex-shrink:0}
-.mtg-info{display:flex;align-items:center;gap:14px}
-.mid-badge{font-family:'DM Mono',monospace;font-size:12px;color:var(--t2);background:var(--bg3);padding:4px 10px;border-radius:6px;border:1px solid var(--bdr);cursor:pointer;transition:all .15s}
-.mid-badge:hover{border-color:var(--acc);color:#fff}
-.mtimer{font-family:'DM Mono',monospace;font-size:12px;color:var(--t2)}
-.sec-bdg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ok);background:rgba(46,204,113,.09);padding:3px 9px;border-radius:5px;border:1px solid rgba(46,204,113,.2)}
-.rec-badge{display:none;align-items:center;gap:5px;font-size:11px;color:var(--err);background:rgba(231,76,60,.09);padding:3px 9px;border-radius:5px;border:1px solid rgba(231,76,60,.2)}
-.rec-badge.show{display:flex}
-.rec-dot{width:7px;height:7px;border-radius:50%;background:var(--err);animation:recpulse 1s ease-in-out infinite}
-@keyframes recpulse{0%,100%{opacity:1}50%{opacity:.4}}
-.mtg-hdr-r{display:flex;gap:8px}
-.ic-btn{width:34px;height:34px;border-radius:7px;background:var(--glass);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;transition:background .15s;color:#fff}
-.ic-btn:hover{background:var(--glass2)}
-.mtg-body{flex:1;display:flex;overflow:hidden}
-.vid-area{flex:1;padding:10px;overflow:hidden;display:flex;flex-direction:column}
+        /* Reactions */
+        .reactions-menu { position: absolute; bottom: 90px; background: #242629; padding: 10px; border-radius: 30px; display: none; gap: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+        .reactions-menu.active { display: flex; }
+        .react-btn { background: transparent; font-size: 24px; padding: 5px; cursor: pointer; transition: transform 0.2s; }
+        .react-btn:hover { transform: scale(1.3); }
+        .floating-reaction { position: absolute; bottom: 100px; font-size: 40px; pointer-events: none; animation: floatUp 2s ease-out forwards; z-index: 100; }
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-200px) scale(1.5); opacity: 0; } }
 
-/* VIDEO GRID */
-.vgrid{flex:1;display:grid;gap:8px;overflow:hidden;min-height:0}
-.vgrid.g1{grid-template-columns:1fr;grid-template-rows:1fr}
-.vgrid.g2{grid-template-columns:1fr 1fr;grid-template-rows:1fr}
-.vgrid.g3{grid-template-columns:repeat(3,1fr);grid-template-rows:1fr}
-.vgrid.g4{grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
-.vgrid.g6{grid-template-columns:repeat(3,1fr);grid-template-rows:1fr 1fr}
-.vtile{position:relative;border-radius:12px;overflow:hidden;background:#111115;border:2px solid transparent;transition:border-color .25s;min-height:120px}
-.vtile.speaking{border-color:var(--ok)}
-.vtile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000}
-.vtile.local video{transform:scaleX(-1)}
-.vtile-av{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,#1a1a30,#111115)}
-.av-circle{width:76px;height:76px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;color:#fff;overflow:hidden;flex-shrink:0}
-.av-circle img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-.av-name-lbl{font-size:13px;color:var(--t2);display:flex;align-items:center;gap:5px}
-.vtile-ov{position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.65) 0%,transparent 45%);display:flex;align-items:flex-end;padding:10px}
-.tname{font-size:12px;font-weight:500;color:#fff;background:rgba(0,0,0,.5);padding:3px 9px;border-radius:5px;display:flex;align-items:center;gap:4px;max-width:190px;overflow:hidden}
-.tname-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tmuted-ic{background:rgba(231,76,60,.7);border-radius:5px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-left:auto}
-.sring{position:absolute;inset:-2px;border-radius:14px;border:3px solid var(--ok);opacity:0;pointer-events:none}
-.vtile.speaking .sring{opacity:1;animation:sp 1.4s ease-in-out infinite}
-@keyframes sp{0%,100%{opacity:.5}50%{opacity:1}}
-.fv{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:linear-gradient(135deg,#7c6fff,#2ecc71);color:#fff;font-size:8px;font-weight:900;flex-shrink:0}
-
-/* SIDEBAR */
-.sidebar{width:290px;background:var(--bg1);border-left:1px solid var(--bdr);display:flex;flex-direction:column;flex-shrink:0;transition:width .22s;overflow:hidden}
-.sidebar.hidden{width:0}
-.sb-tabs{display:flex;border-bottom:1px solid var(--bdr);flex-shrink:0}
-.sbtab{flex:1;padding:10px 6px;background:none;border:none;color:var(--t2);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
-.sbtab.active{color:var(--acc);border-bottom-color:var(--acc)}
-.sbtab:hover:not(.active){color:#fff}
-.parts-list{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:3px}
-.part-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;transition:background .1s}
-.part-item:hover{background:var(--bg3)}
-.part-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;overflow:hidden}
-.part-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-.part-info{flex:1;min-width:0}
-.part-nm{font-size:13px;font-weight:500;display:flex;align-items:center;gap:4px;overflow:hidden}
-.part-nm-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px}
-.part-role{font-size:10px;color:var(--t3)}
-.part-icons{font-size:13px;flex-shrink:0}
-.part-icons .mx{color:var(--err)}
-
-/* CHAT */
-.chat-panel{flex:1;overflow:hidden;display:none;flex-direction:column;min-height:0}
-.chat-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px;min-height:0}
-.cmsg{display:flex;flex-direction:column;gap:3px}
-.cmsg-hdr{display:flex;align-items:baseline;gap:7px}
-.cmsg-sndr{font-size:12px;font-weight:600;color:var(--t2);display:flex;align-items:center;gap:4px}
-.cmsg.me .cmsg-sndr{color:var(--acc)}
-.cmsg-time{font-size:10px;color:var(--t3)}
-.cmsg-txt{font-size:13px;color:var(--t2);line-height:1.5;word-break:break-word}
-.chat-inp-row{padding:12px;border-top:1px solid var(--bdr);display:flex;gap:8px;align-items:center;flex-shrink:0}
-.chat-inp{flex:1;background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:9px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;resize:none;outline:none;height:40px;transition:border-color .15s}
-.chat-inp:focus{border-color:var(--acc)}.chat-inp::placeholder{color:var(--t3)}
-.chat-send{width:40px;height:40px;border-radius:9px;background:var(--acc);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;flex-shrink:0;transition:background .15s}
-.chat-send:hover{background:var(--acc2)}
-
-/* CTRL BAR */
-.ctrl-bar{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:74px;background:var(--bg1);border-top:1px solid var(--bdr);flex-shrink:0}
-.ctrl-ctr{display:flex;gap:6px}
-.ctrl-r{display:flex;gap:8px;align-items:center}
-.ctrl-l{min-width:170px;display:flex;flex-direction:column;gap:3px}
-.ctrl-nm{font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.ctrl-sec{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ok);background:rgba(46,204,113,.08);padding:2px 7px;border-radius:4px;width:fit-content}
-.cbtn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 12px;border-radius:10px;border:none;background:var(--glass);color:#fff;cursor:pointer;transition:all .15s;font-family:'DM Sans',sans-serif;min-width:58px}
-.cbtn:hover{background:var(--glass2);transform:translateY(-1px)}
-.cbtn.on{background:rgba(124,111,255,.18);color:var(--acc)}
-.cbtn.off{background:rgba(231,76,60,.12);color:var(--err)}
-.cbtn.rec-on{background:rgba(231,76,60,.18);color:var(--err)}
-.cbtn .ci{font-size:18px;line-height:1}
-.cbtn .cl{font-size:10px;font-weight:500;color:var(--t2);white-space:nowrap}
-.cbtn.on .cl{color:var(--acc)}.cbtn.off .cl{color:var(--err)}.cbtn.rec-on .cl{color:var(--err)}
-.leave-btn{padding:10px 20px;background:var(--err);color:#fff;border:none;border-radius:9px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:7px}
-.leave-btn:hover{background:#c0392b;transform:translateY(-1px)}
-.cbdg{background:var(--acc);color:#fff;font-size:9px;font-weight:700;border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;margin-left:3px}
-
-/* REACTIONS */
-.rxn-pop{position:fixed;bottom:88px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--bdr);border-radius:50px;padding:8px 16px;display:flex;gap:5px;z-index:100;box-shadow:var(--sh);opacity:0;pointer-events:none;transition:opacity .18s}
-.rxn-pop.show{opacity:1;pointer-events:all}
-.rxbn{width:38px;height:38px;border-radius:50%;border:none;background:transparent;font-size:20px;cursor:pointer;transition:transform .15s}
-.rxbn:hover{transform:scale(1.3)}
-.float-rxn{position:fixed;bottom:95px;font-size:38px;animation:frxn 2.8s ease-out forwards;pointer-events:none;z-index:200}
-@keyframes frxn{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-200px) scale(1.4)}}
-
-/* MODALS */
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:300;display:none;align-items:center;justify-content:center;backdrop-filter:blur(5px)}
-.modal-bg.show{display:flex}
-.modal{background:var(--bg2);border:1px solid var(--bdr);border-radius:18px;padding:26px;box-shadow:var(--sh)}
-.modal h3{font-size:17px;font-weight:700;margin-bottom:7px}
-.modal p{font-size:13px;color:var(--t2);margin-bottom:20px;line-height:1.5}
-.modal-acts{display:flex;gap:9px;justify-content:flex-end}
-
-/* DECO MODAL */
-.deco-modal{width:460px;max-height:90vh;overflow-y:auto}
-.deco-prev{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.04);border:1px solid var(--bdr);border-radius:11px;padding:14px 16px;margin-bottom:22px}
-.deco-prev-av{width:44px;height:44px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;overflow:hidden;flex-shrink:0}
-.deco-prev-av img{width:100%;height:100%;object-fit:cover;border-radius:50%}
-.deco-prev-name{font-size:15px;font-weight:600;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
-.deco-sec{margin-bottom:20px}
-.deco-sec-lbl{font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
-.sz-row{display:flex;gap:8px;margin-bottom:14px}
-.sz-btn{flex:1;padding:8px;border-radius:7px;border:1px solid var(--bdr);background:var(--glass);color:var(--t2);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;transition:all .15s;text-align:center}
-.sz-btn.active{background:rgba(124,111,255,.18);border-color:var(--acc);color:#fff}
-.emj-grid{display:flex;flex-wrap:wrap;gap:7px}
-.emj{width:42px;height:42px;border-radius:9px;background:var(--bg3);border:2px solid transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:20px;transition:all .15s}
-.emj:hover{background:var(--glass2);border-color:var(--acc)}
-.emj.sel{border-color:var(--acc);background:rgba(124,111,255,.18)}
-.paste-zone{width:100%;padding:16px;border-radius:11px;background:linear-gradient(135deg,rgba(124,111,255,.12),rgba(46,204,113,.08));border:2px dashed rgba(124,111,255,.4);color:#b0a8ff;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;text-align:center;margin-bottom:9px;outline:none;transition:border-color .2s}
-.paste-zone:focus{border-color:var(--ok)}
-.file-pick-btn{width:100%;padding:11px;border-radius:9px;background:var(--glass);border:1px solid var(--bdr);color:var(--t2);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;margin-bottom:12px;transition:all .15s}
-.file-pick-btn:hover{background:var(--glass2);color:#fff}
-.img-thumbs{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:10px}
-.img-th{position:relative;width:52px;height:52px;border-radius:9px;overflow:hidden;border:2px solid transparent;cursor:pointer;flex-shrink:0}
-.img-th:hover{border-color:var(--acc)}.img-th.sel{border-color:var(--acc)}
-.img-th img{width:100%;height:100%;object-fit:cover}
-.img-th .rm{position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.8);color:#fff;font-size:9px;display:none;align-items:center;justify-content:center;border:none;cursor:pointer}
-.img-th:hover .rm{display:flex}
-.clear-btn{width:100%;padding:9px;border-radius:8px;border:1px solid var(--bdr);background:transparent;color:var(--t3);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;margin-top:6px;transition:all .15s}
-.clear-btn:hover{color:var(--err);border-color:rgba(231,76,60,.3);background:rgba(231,76,60,.06)}
-
-/* FAMILY MODAL */
-.fam-modal{width:400px}
-.fam-icon{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,rgba(124,111,255,.2),rgba(46,204,113,.2));border:2px solid rgba(124,111,255,.3);display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 16px}
-.fam-item{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:10px 12px}
-.fam-email{flex:1;font-size:13px;color:var(--t2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fam-rm{background:none;border:none;color:var(--t3);cursor:pointer;font-size:16px;padding:0 3px;line-height:1}
-.fam-rm:hover{color:var(--err)}
-
-/* MISC */
-.dots{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
-.dot{position:absolute;border-radius:50%;opacity:.07;animation:fdot linear infinite}
-@keyframes fdot{0%{transform:translateY(100vh) scale(0);opacity:0}10%{opacity:.07}90%{opacity:.07}100%{transform:translateY(-150px) scale(1);opacity:0}}
-#toast{position:fixed;top:76px;left:50%;transform:translateX(-50%) translateY(-18px);background:var(--bg3);border:1px solid var(--bdr);border-radius:9px;padding:10px 18px;font-size:13px;color:#fff;z-index:500;opacity:0;transition:all .28s;white-space:nowrap;box-shadow:var(--sh)}
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-.scr-ring{position:fixed;inset:0;border:4px solid var(--ok);pointer-events:none;z-index:1000;border-radius:4px;display:none}
-.scr-ring.show{display:block}
-::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
-</style>
+        /* Dynamic Grids */
+        .g1 { grid-template-columns: 1fr; }
+        .g2 { grid-template-columns: 1fr 1fr; }
+        .g3 { grid-template-columns: 1fr 1fr; } .g3 .video-wrapper:first-child { grid-column: span 2; }
+        .g4 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+        .g6 { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+    </style>
 </head>
 <body>
-<div class="dots" id="dots"></div>
+    <div class="dots-bg"></div>
+    <div class="toast-container" id="toastContainer"></div>
 
-<!-- ══ AUTH ══ -->
-<div id="s-auth" class="screen active">
-  <div class="card auth-box">
-    <div class="auth-logo"><div class="auth-logo-ic">🌐</div>NEXUS</div>
-    <div class="auth-h" id="auth-h">Welcome back</div>
-    <div class="auth-sub" id="auth-sub">Sign in to start or join a NEXUS meeting</div>
-    <button class="g-btn" id="g-btn">
-      <svg class="gic" viewBox="0 0 24 24" fill="none">
-        <path d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82z" fill="#4285F4"/>
-        <path d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.435v3.09C3.515 21.3 7.615 24 12.255 24z" fill="#34A853"/>
-        <path d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62H1.435a11.86 11.86 0 000 10.76l4.09-3.09z" fill="#FBBC05"/>
-        <path d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0 7.615 0 3.515 2.7 1.435 6.62l4.09 3.07c.95-2.85 3.6-4.94 6.73-4.94z" fill="#EA4335"/>
-      </svg>
-      <span id="g-btn-txt">Continue with Google</span>
-    </button>
-    <div class="sep">or email</div>
-    <div class="alert ae" id="a-err"></div>
-    <div class="alert ai" id="a-info"></div>
-    <div class="alert ao" id="a-ok"></div>
-    <div class="fg" id="name-row" style="display:none"><label class="lbl">Full Name</label><input class="inp" id="f-name" type="text" placeholder="Your name" autocomplete="name"></div>
-    <div class="fg"><label class="lbl">Email</label><input class="inp" id="f-email" type="email" placeholder="you@example.com" autocomplete="email"></div>
-    <div class="fg" style="margin-bottom:20px"><label class="lbl">Password</label><div class="pw-row"><input class="inp" id="f-pass" type="password" placeholder="••••••••" autocomplete="current-password"><button class="pw-eye" id="pw-eye">👁</button></div></div>
-    <button class="btn btn-p" id="auth-btn" style="width:100%;padding:13px;font-size:14px;margin-bottom:16px">Sign In</button>
-    <div class="auth-foot"><span id="auth-ft">Don't have an account?</span> <span class="auth-link" id="auth-sw">Sign up</span></div>
-  </div>
-</div>
-
-<!-- ══ VERIFY ══ -->
-<div id="s-verify" class="screen">
-  <div class="card verify-box">
-    <div class="vc-icon">📧</div>
-    <div class="vc-h">Verify your email</div>
-    <div class="vc-sub">We sent a verification link to</div>
-    <div class="vc-email" id="vc-email">—</div>
-    <div class="vsteps">
-      <div class="vstep"><div class="vnum done">✓</div><div class="vstep-t"><strong>Account created</strong></div></div>
-      <div class="vstep"><div class="vnum" id="vs2">2</div><div class="vstep-t"><strong>Check your inbox</strong> — click the link in the email from NEXUS</div></div>
-      <div class="vstep"><div class="vnum" id="vs3">3</div><div class="vstep-t"><strong>Come back here</strong> — we auto-detect it, or click below</div></div>
-    </div>
-    <div class="vstat"><div class="sdot" id="sdot"></div><span id="stext">Waiting for verification…</span></div>
-    <div class="alert ae" id="ve-err"></div>
-    <div class="alert ao" id="ve-ok"></div>
-    <button class="vfy-btn" id="vfy-btn">✅ I've verified — Continue</button>
-    <div class="resend-row">
-      <button class="resend-btn" id="resend-btn">Resend email</button>
-      <span class="resend-cd" id="resend-cd"></span>
-    </div>
-    <button class="vfy-back" id="vfy-back">← Use a different account</button>
-  </div>
-</div>
-
-<!-- ══ HOME ══ -->
-<div id="s-home" class="screen">
-  <div class="home-hdr">
-    <div class="logo"><div class="logo-ic">🌐</div>NEXUS</div>
-    <div class="hdr-r">
-      <div class="chip"><div class="chip-av" id="hdr-av">U</div><span class="chip-nm" id="hdr-nm">User</span></div>
-      <button class="hdr-btn acc" id="deco-btn">✨ Badge</button>
-      <button class="hdr-btn acc" id="fam-btn">👨‍👩‍👧 Family</button>
-      <button class="hdr-btn" id="signout-btn" style="color:var(--err);border-color:rgba(231,76,60,.3)">Sign Out</button>
-    </div>
-  </div>
-  <div class="home-body">
-    <div class="home-hero">
-      <h1>Connect the world.</h1>
-      <p>Real video calls powered by WebRTC and Firebase. Invite anyone with a meeting ID — no downloads needed.</p>
-      <div class="hero-btns">
-        <button class="hbtn hbtn-p" id="new-mtg-btn">🌐 New Meeting</button>
-        <button class="hbtn hbtn-s" id="focus-join">🔗 Join Meeting</button>
-      </div>
-    </div>
-    <div class="card join-card">
-      <h3>Join a Meeting</h3>
-      <div class="fg"><label class="lbl">Meeting ID</label><input class="inp" id="mtg-inp" type="text" placeholder="e.g. 842 156 7293"></div>
-      <div class="sep">ready?</div>
-      <button class="btn btn-p" id="join-btn" style="width:100%;padding:12px;font-size:14px">Join Now</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══ PRE-JOIN ══ -->
-<div id="s-prejoin" class="screen">
-  <div><div class="pj-h">Ready to join?</div><div class="pj-sub" id="pj-sub">—</div></div>
-  <div class="pj-vwrap">
-    <video id="pj-vid" autoplay muted playsinline></video>
-    <div class="pj-camoff" id="pj-camoff"><span>📷</span>Camera is off</div>
-  </div>
-  <div class="pj-ctrls">
-    <button class="cbtn" id="pj-mic"><span class="ci" id="pj-mi">🎤</span><span class="cl" id="pj-ml">Mute</span></button>
-    <button class="cbtn" id="pj-cam"><span class="ci" id="pj-ci">📹</span><span class="cl" id="pj-cl">Stop Video</span></button>
-  </div>
-  <div class="pj-acts">
-    <button class="btn btn-g" id="pj-cancel">Cancel</button>
-    <button class="btn btn-p" id="pj-join" style="padding:11px 26px;font-size:14px">Join Now</button>
-  </div>
-</div>
-
-<!-- ══ MEETING ══ -->
-<div id="s-meeting" class="screen">
-  <div class="mtg-hdr">
-    <div class="mtg-info">
-      <div class="logo" style="font-size:15px"><div class="logo-ic" style="width:27px;height:27px;font-size:13px">🌐</div>NEXUS</div>
-      <span class="mid-badge" id="live-id">—</span>
-      <span class="mtimer" id="timer">00:00</span>
-      <span class="sec-bdg">🔒 E2E</span>
-      <span class="rec-badge" id="rec-badge"><span class="rec-dot"></span>REC</span>
-    </div>
-    <div class="mtg-hdr-r">
-      <button class="ic-btn" id="view-btn">⊞</button>
-      <button class="ic-btn" id="copy-btn">🔗</button>
-    </div>
-  </div>
-  <div class="mtg-body">
-    <div class="vid-area"><div class="vgrid g1" id="vgrid"></div></div>
-    <div class="sidebar hidden" id="sidebar">
-      <div class="sb-tabs">
-        <button class="sbtab active" id="tab-p">👥 People <span class="cbdg" id="pcnt">1</span></button>
-        <button class="sbtab" id="tab-c">💬 Chat</button>
-      </div>
-      <div id="panel-p" class="parts-list"></div>
-      <div id="panel-c" class="chat-panel">
-        <div class="chat-msgs" id="chat-msgs"></div>
-        <div class="chat-inp-row">
-          <textarea class="chat-inp" id="chat-inp" placeholder="Message everyone…" rows="1"></textarea>
-          <button class="chat-send" id="chat-send">➤</button>
+    <div id="authScreen" class="screen active">
+        <div class="auth-container">
+            <h1 style="margin-bottom: 20px; font-family: 'DM Mono', monospace; letter-spacing: 2px;">NEXUS</h1>
+            <div class="auth-tabs">
+                <div class="auth-tab active" onclick="switchAuth('login')">Sign In</div>
+                <div class="auth-tab" onclick="switchAuth('register')">Sign Up</div>
+            </div>
+            <form id="authForm">
+                <input type="text" id="authName" placeholder="Full Name" style="display: none;">
+                <input type="email" id="authEmail" placeholder="Email Address" required>
+                <div class="pwd-wrap">
+                    <input type="password" id="authPwd" placeholder="Password" required>
+                    <i class="fas fa-eye" onclick="togglePwd()"></i>
+                </div>
+                <button type="submit" style="width: 100%; margin-top: 10px;" id="authSubmitBtn">Sign In</button>
+            </form>
+            <div style="margin: 15px 0; color: var(--text-muted);">or</div>
+            <button onclick="signInGoogle()" style="width: 100%; background: #fff; color: #000;"><i class="fab fa-google"></i> Continue with Google</button>
         </div>
-      </div>
     </div>
-  </div>
-  <div class="ctrl-bar">
-    <div class="ctrl-l">
-      <div class="ctrl-nm" id="ctrl-nm">You</div>
-      <div class="ctrl-sec">🔒 Secure</div>
+
+    <div id="homeScreen" class="screen">
+        <div class="header-chip">
+            <img src="" id="userAvatar" class="avatar" alt="avatar" style="display:none;">
+            <div id="userInitials" class="avatar"></div>
+            <span id="userNameDisp">Loading...</span>
+            <button class="icon-btn" style="width:30px; height:30px; padding:0;" onclick="showModal('decoModal')" title="Decorations">✨</button>
+            <button class="icon-btn" style="width:30px; height:30px; padding:0;" onclick="showModal('familyModal')" title="Family">👨‍👩‍👧</button>
+            <button class="icon-btn" style="width:30px; height:30px; padding:0; background:transparent;" onclick="logOut()"><i class="fas fa-sign-out-alt"></i></button>
+        </div>
+        <div class="home-container">
+            <h2>Start or Join Meeting</h2>
+            <div class="hero-actions">
+                <button onclick="startMeetingFlow()" style="flex:1;"><i class="fas fa-video"></i> New Meeting</button>
+            </div>
+            <div style="margin: 20px 0;">
+                <input type="text" id="joinMeetingId" placeholder="Enter Meeting ID">
+                <button onclick="joinMeetingFlow()" style="width: 100%;"><i class="fas fa-sign-in-alt"></i> Join Meeting</button>
+            </div>
+        </div>
     </div>
-    <div class="ctrl-ctr">
-      <button class="cbtn" id="mic-btn"><span class="ci" id="mic-i">🎤</span><span class="cl" id="mic-l">Mute</span></button>
-      <button class="cbtn" id="cam-btn"><span class="ci" id="cam-i">📹</span><span class="cl" id="cam-l">Stop Video</span></button>
-      <button class="cbtn" id="scr-btn"><span class="ci">🖥️</span><span class="cl">Share</span></button>
-      <button class="cbtn" id="rec-btn"><span class="ci">⏺️</span><span class="cl" id="rec-l">Record</span></button>
-      <button class="cbtn" id="rxn-btn"><span class="ci">😊</span><span class="cl">React</span></button>
-      <button class="cbtn" id="chat-btn"><span class="ci">💬</span><span class="cl">Chat</span></button>
-      <button class="cbtn" id="ppl-btn"><span class="ci">👥</span><span class="cl">People</span></button>
+
+    <div id="preJoinScreen" class="screen">
+        <div class="prejoin-container">
+            <h2>Ready to join?</h2>
+            <div class="video-wrapper" style="width: 100%; height: 200px; margin: 20px 0; background: #000;">
+                <video id="preJoinVideo" autoplay muted playsinline class="mirrored"></video>
+            </div>
+            <div style="display: flex; gap: 15px; justify-content: center; margin-bottom: 20px;">
+                <button class="icon-btn active" id="preMicBtn" onclick="togglePreMedia('mic')"><i class="fas fa-microphone"></i></button>
+                <button class="icon-btn active" id="preCamBtn" onclick="togglePreMedia('cam')"><i class="fas fa-video"></i></button>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button style="flex: 1; background: #242629;" onclick="cancelJoin()">Cancel</button>
+                <button style="flex: 1;" onclick="executeJoin()">Join Now</button>
+            </div>
+        </div>
     </div>
-    <div class="ctrl-r">
-      <button class="leave-btn" id="leave-btn">📴 Leave</button>
+
+    <div id="meetingScreen" class="screen">
+        <div class="meeting-header">
+            <div style="font-family: 'DM Mono', monospace; font-weight: bold; font-size: 20px;">NEXUS</div>
+            <div class="meeting-badges">
+                <div class="badge" title="End-to-End Encrypted"><i class="fas fa-lock" style="color: var(--success)"></i> E2E</div>
+                <div class="badge" onclick="copyMeetingId()" title="Copy ID" style="cursor: pointer;"><i class="fas fa-hashtag"></i> <span id="meetIdDisp"></span></div>
+                <div class="badge"><i class="far fa-clock"></i> <span id="meetTimer">00:00</span></div>
+                <div class="badge rec" id="recBadge"><div class="rec-dot"></div> REC</div>
+            </div>
+        </div>
+        
+        <div class="meeting-body">
+            <div class="video-area">
+                <div id="videoGrid" class="video-grid g1">
+                    </div>
+                <div class="reactions-menu" id="reactionsMenu">
+                    <button class="react-btn" onclick="sendReaction('👍')">👍</button>
+                    <button class="react-btn" onclick="sendReaction('❤️')">❤️</button>
+                    <button class="react-btn" onclick="sendReaction('😂')">😂</button>
+                    <button class="react-btn" onclick="sendReaction('😮')">😮</button>
+                    <button class="react-btn" onclick="sendReaction('👏')">👏</button>
+                    <button class="react-btn" onclick="sendReaction('🎉')">🎉</button>
+                </div>
+            </div>
+            
+            <div class="sidebar" id="sidebar">
+                <div class="tabs">
+                    <div class="tab active" onclick="switchSidebar('people')">People (<span id="peopleCount">1</span>)</div>
+                    <div class="tab" onclick="switchSidebar('chat')">Chat</div>
+                </div>
+                <div id="tab-people" class="tab-content active">
+                    <div id="participantsList"></div>
+                </div>
+                <div id="tab-chat" class="tab-content">
+                    <div class="chat-messages" id="chatMessages"></div>
+                    <div class="chat-input">
+                        <textarea id="chatInput" placeholder="Message... (Enter to send)" rows="1" style="margin:0; resize:none;" onkeydown="handleChatKey(event)"></textarea>
+                        <button class="icon-btn" onclick="sendChatMessage()"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-bar">
+            <button class="icon-btn active" id="btnMic" onclick="toggleMeetMic()"><i class="fas fa-microphone"></i></button>
+            <button class="icon-btn active" id="btnCam" onclick="toggleMeetCam()"><i class="fas fa-video"></i></button>
+            <button class="icon-btn" id="btnShare" onclick="toggleScreenShare()"><i class="fas fa-desktop"></i></button>
+            <button class="icon-btn" id="btnRec" onclick="toggleRecording()"><i class="fas fa-record-vinyl"></i></button>
+            <button class="icon-btn" onclick="document.getElementById('reactionsMenu').classList.toggle('active')"><i class="fas fa-smile"></i></button>
+            <button class="icon-btn" onclick="cycleGrid()"><i class="fas fa-th-large"></i></button>
+            <button class="icon-btn" id="btnSidebar" onclick="toggleSidebar()"><i class="fas fa-comment-alt"></i></button>
+            <button class="icon-btn danger" style="width: auto; border-radius: 8px; padding: 0 20px;" onclick="showModal('leaveModal')">Leave</button>
+        </div>
     </div>
-  </div>
-</div>
 
-<!-- Reactions -->
-<div class="rxn-pop" id="rxn-pop">
-  <button class="rxbn" data-e="👍">👍</button><button class="rxbn" data-e="❤️">❤️</button>
-  <button class="rxbn" data-e="😂">😂</button><button class="rxbn" data-e="😮">😮</button>
-  <button class="rxbn" data-e="👏">👏</button><button class="rxbn" data-e="🎉">🎉</button>
-</div>
-
-<!-- Leave Modal -->
-<div class="modal-bg" id="m-leave"><div class="modal" style="width:360px">
-  <h3>Leave Meeting?</h3><p>You'll be disconnected. Others can continue after you leave.</p>
-  <div class="modal-acts"><button class="btn btn-g" id="m-stay">Stay</button><button class="btn btn-d" id="m-leave-ok">Leave</button></div>
-</div></div>
-
-<!-- Deco Modal -->
-<div class="modal-bg" id="m-deco"><div class="modal deco-modal">
-  <div style="font-size:17px;font-weight:700;margin-bottom:5px">✨ Your Name Badge</div>
-  <div style="font-size:13px;color:var(--t2);margin-bottom:18px">Appears next to your name for everyone in the meeting</div>
-  <div class="deco-prev">
-    <div class="deco-prev-av" id="dp-av">U</div>
-    <div><div class="deco-prev-name" id="dp-name">Your Name</div><div style="font-size:11px;color:var(--t3);margin-top:3px">Live preview</div></div>
-  </div>
-  <div class="deco-sec">
-    <div class="deco-sec-lbl">Size</div>
-    <div class="sz-row">
-      <button class="sz-btn" data-sz="sm">Small</button>
-      <button class="sz-btn active" data-sz="md">Medium</button>
-      <button class="sz-btn" data-sz="lg">Large</button>
+    <div id="decoModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal">
+            <h3>✨ Name Badge Decoration</h3>
+            <p style="color:var(--text-muted); font-size:12px; margin-bottom: 10px;">Select an emoji or paste/upload an image.</p>
+            <input type="text" id="emojiInput" placeholder="Type an emoji here..." style="font-size:20px; text-align:center;">
+            <input type="file" id="decoImgUpload" accept="image/*" style="margin-bottom: 10px;">
+            <select id="decoSize" style="background:#242629; color:white; padding:10px; width:100%; border-radius:8px; border:none; outline:none; margin-bottom: 15px;">
+                <option value="deco-sm">Small</option>
+                <option value="deco-md" selected>Medium</option>
+                <option value="deco-lg">Large</option>
+            </select>
+            <button onclick="saveDeco()" style="width:100%;">Save Decoration</button>
+        </div>
     </div>
-  </div>
-  <div class="deco-sec">
-    <div class="deco-sec-lbl">Emoji</div>
-    <div class="emj-grid" id="emj-grid"></div>
-  </div>
-  <div class="deco-sec">
-    <div class="deco-sec-lbl">Image — paste or upload</div>
-    <div class="paste-zone" id="paste-zone" tabindex="0">📋 Click here then press Ctrl+V to paste an image</div>
-    <input type="file" id="img-inp" accept="image/*" style="display:none">
-    <button class="file-pick-btn" onclick="document.getElementById('img-inp').click()">📁 Or pick from files</button>
-    <div class="img-thumbs" id="img-thumbs"></div>
-  </div>
-  <button class="clear-btn" id="deco-clear">✕ Remove badge</button>
-  <div style="display:flex;gap:9px;margin-top:18px;justify-content:flex-end">
-    <button class="btn btn-g" id="deco-cancel">Cancel</button>
-    <button class="btn btn-p" id="deco-save">Save Badge</button>
-  </div>
-</div></div>
 
-<!-- Family Modal -->
-<div class="modal-bg" id="m-fam"><div class="modal fam-modal">
-  <div class="fam-icon">👨‍👩‍👧</div>
-  <div style="text-align:center;margin-bottom:20px">
-    <div style="font-size:18px;font-weight:700;margin-bottom:5px">Family Badges</div>
-    <div style="font-size:13px;color:var(--t2)">Add family emails — they get a <span class="fv" style="margin:0 3px">✔</span> badge next to their name</div>
-  </div>
-  <div class="fg"><label class="lbl">Add family member</label>
-    <div style="display:flex;gap:8px">
-      <input class="inp" id="fam-inp" type="email" placeholder="family@example.com" style="flex:1">
-      <button class="btn btn-p" id="fam-add" style="white-space:nowrap;padding:11px 14px">Add ✔</button>
+    <div id="familyModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal">
+            <h3>👨‍👩‍👧 Family Badges</h3>
+            <p style="color:var(--text-muted); font-size:12px; margin-bottom: 10px;">Add family members by email. They get a special badge!</p>
+            <div style="display:flex; gap:5px;">
+                <input type="email" id="famEmailInput" placeholder="Family member's email" style="margin:0;">
+                <button onclick="addFamily()">Add</button>
+            </div>
+            <div id="familyList" style="margin-top: 15px; max-height:150px; overflow-y:auto;"></div>
+            <button onclick="closeModal('familyModal')" style="width:100%; background:#242629; margin-top:15px;">Close</button>
+        </div>
     </div>
-  </div>
-  <div class="alert ae" id="fam-err"></div><div class="alert ao" id="fam-ok"></div>
-  <div id="fam-list" style="display:flex;flex-direction:column;gap:7px;margin-bottom:18px;max-height:180px;overflow-y:auto"></div>
-  <div style="display:flex;justify-content:flex-end"><button class="btn btn-g" id="fam-close">Close</button></div>
-</div></div>
 
-<div class="scr-ring" id="scr-ring"></div>
-<div id="toast"></div>
-
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
-import {
-  getAuth, onAuthStateChanged, signOut, reload,
-  signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  updateProfile, sendEmailVerification,
-  signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider
-} from "https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js";
-import {
-  getFirestore, collection, addDoc, onSnapshot, query, orderBy,
-  doc, setDoc, getDoc, getDocs, serverTimestamp, deleteDoc
-} from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
-
-/* ─── FIREBASE ─── */
-const fbApp = initializeApp({
-  apiKey:"AIzaSyBBXlMsVKCVZg7wkw2CjWeetnGkpINV_M4",
-  authDomain:"webnexus-cdc47.firebaseapp.com",
-  projectId:"webnexus-cdc47",
-  storageBucket:"webnexus-cdc47.firebasestorage.app",
-  messagingSenderId:"185823698270",
-  appId:"1:185823698270:web:b92eb6507a6974e46043cf"
-});
-const auth = getAuth(fbApp);
-const db   = getFirestore(fbApp);
-const gp   = new GoogleAuthProvider();
-gp.addScope('profile'); gp.addScope('email');
-
-/* ─── WebRTC config ─── */
-const ICE = {
-  iceServers:[
-    {urls:'stun:stun.l.google.com:19302'},
-    {urls:'stun:stun1.l.google.com:19302'},
-    {urls:'turn:openrelay.metered.ca:80',    username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turn:openrelay.metered.ca:443',   username:'openrelayproject',credential:'openrelayproject'},
-    {urls:'turn:openrelay.metered.ca:443?transport=tcp',username:'openrelayproject',credential:'openrelayproject'},
-  ],
-  iceCandidatePoolSize:10
-};
-
-/* ─── STATE ─── */
-let CU=null; // currentUser
-let localStream=null, pjStream=null;
-let micOn=true, camOn=true, sharing=false;
-let pjMic=true, pjCam=true;
-let meetId=null;
-const peers={}, partMap={}, connecting=new Set(), unsubs=[];
-let chatUnsub=null, timerInt=null, timerSec=0, sbPanel=null, layoutIdx=0;
-let myDeco={type:null,value:null,size:'md'};
-let pendDeco={type:null,value:null,size:'md'};
-const famEmails=new Set();
-let mediaRec=null, recChunks=[], isRec=false;
-let skipRoute=false;
-
-/* ─── HELPERS ─── */
-const $=id=>document.getElementById(id);
-const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),3000);}
-function stopS(s){if(s)s.getTracks().forEach(t=>t.stop());}
-function genId(){const r=()=>Math.floor(Math.random()*900+100);return`${r()} ${r()} ${r()}`;}
-function mp(s){return`meetings/${meetId}/${s}`;}
-function uid2col(uid){const c=['#7c6fff','#ff6b35','#2ecc71','#f39c12','#e74c3c','#3498db','#9b59b6'];let h=0;for(let i=0;i<(uid||'').length;i++)h=(h*31+(uid||'').charCodeAt(i))%c.length;return c[Math.abs(h)];}
-
-const SCREENS=['s-auth','s-verify','s-home','s-prejoin','s-meeting'];
-function show(id){SCREENS.forEach(s=>$(s).classList.toggle('active',s===id));}
-
-/* ─────────────── AUTH ─────────────── */
-let mode='login', pendU=null;
-function clrA(){['a-err','a-info','a-ok'].forEach(id=>{const e=$(id);if(!e)return;e.textContent='';e.classList.remove('show');});}
-function clrV(){['ve-err','ve-ok'].forEach(id=>{const e=$(id);if(!e)return;e.textContent='';e.classList.remove('show');});}
-function sA(id,m){const e=$(id);if(!e)return;e.textContent=m;e.classList.add('show');}
-function busy(v){$('auth-btn').disabled=$('g-btn').disabled=v;$('auth-btn').textContent=v?'Please wait…':(mode==='login'?'Sign In':'Create Account');}
-
-function setMode(m){
-  mode=m;clrA();const L=m==='login';
-  $('auth-h').textContent=L?'Welcome back':'Create account';
-  $('auth-sub').textContent=L?'Sign in to join NEXUS':'Join NEXUS — we\'ll verify your email';
-  $('auth-btn').textContent=L?'Sign In':'Create Account';
-  $('auth-ft').textContent=L?"Don't have an account?":'Already have an account?';
-  $('auth-sw').textContent=L?'Sign up':'Sign in';
-  $('name-row').style.display=L?'none':'block';
-  $('f-pass').autocomplete=L?'current-password':'new-password';
-}
-
-function fbE(code){return({'auth/invalid-email':'Please enter a valid email.','auth/user-not-found':'No account found — try signing up.','auth/wrong-password':'Incorrect password.','auth/invalid-credential':'Email or password is incorrect.','auth/email-already-in-use':'Email already registered — sign in instead.','auth/weak-password':'Password must be at least 6 characters.','auth/too-many-requests':'Too many attempts — wait a moment.','auth/network-request-failed':'Network error — check your connection.','auth/popup-closed-by-user':'','auth/popup-blocked':'','auth/unauthorized-domain':'Add this domain in Firebase Console → Auth → Settings → Authorised domains.'})[code]??`Error (${code||'unknown'})`;}
-
-async function doEmail(){
-  const email=$('f-email').value.trim(),pass=$('f-pass').value,name=$('f-name').value.trim();
-  clrA();
-  if(!email){sA('a-err','Enter your email.');return;}
-  if(!pass){sA('a-err','Enter your password.');return;}
-  if(mode==='signup'){
-    if(!name){sA('a-err','Enter your full name.');return;}
-    if(pass.length<6){sA('a-err','Password must be at least 6 characters.');return;}
-  }
-  busy(true);
-  try{
-    if(mode==='login'){
-      await signInWithEmailAndPassword(auth,email,pass);
-      // onAuthStateChanged handles routing
-    } else {
-      skipRoute=true;
-      let cred;
-      try{
-        cred=await createUserWithEmailAndPassword(auth,email,pass);
-      }catch(e){
-        skipRoute=false;
-        const m=fbE(e.code);if(m)sA('a-err',m);
-        busy(false);return;
-      }
-      await updateProfile(cred.user,{displayName:name}).catch(()=>{});
-      try{await setDoc(doc(db,'users',cred.user.uid),{name,email,createdAt:serverTimestamp()},{merge:true});}catch(e){}
-      skipRoute=false;
-      // Go straight to home — no email verification needed
-      CU=cred.user;
-      await loadDeco(cred.user.uid); await loadFam();
-      updateHdr(cred.user);
-      show('s-home');
-      toast('✅ Welcome to NEXUS, '+name+'!');
-    }
-  }catch(e){skipRoute=false;const m=fbE(e.code);if(m)sA('a-err',m);}
-  busy(false);
-}
-
-async function doGoogle(){
-  clrA();$('g-btn-txt').textContent='Opening Google…';$('g-btn').disabled=true;
-  try{
-    const r=await signInWithPopup(auth,gp);await saveGU(r.user);
-  }catch(e){
-    const rd=['auth/popup-blocked','auth/unauthorized-domain','auth/operation-not-supported-in-this-environment'];
-    if(rd.includes(e.code)){sA('a-info','🔄 Redirecting to Google…');try{await signInWithRedirect(auth,gp);}catch(e2){const m=fbE(e2.code);if(m)sA('a-err',m);}
-    }else if(e.code!=='auth/popup-closed-by-user'){const m=fbE(e.code);if(m)sA('a-err',m);}
-  }
-  $('g-btn-txt').textContent='Continue with Google';$('g-btn').disabled=false;
-}
-
-async function saveGU(u){
-  if(!u)return;
-  try{await setDoc(doc(db,'users',u.uid),{name:u.displayName||'',email:u.email||'',photoURL:u.photoURL||null,lastLogin:serverTimestamp(),emailVerified:true},{merge:true});}catch(e){}
-}
-
-getRedirectResult(auth).then(async r=>{if(r?.user)await saveGU(r.user);}).catch(e=>{if(e.code&&e.code!=='auth/no-current-user')setTimeout(()=>{if(!CU){const m=fbE(e.code);if(m)sA('a-err',m);}},400);});
-
-onAuthStateChanged(auth,async user=>{
-  CU=user;
-  if(user){
-    if($('s-meeting').classList.contains('active')){updateHdr(user);return;}
-    if(skipRoute)return;
-    // Load profile and go home — no email verification gate
-    await loadDeco(user.uid); await loadFam();
-    updateHdr(user);
-    if(!$('s-home').classList.contains('active')&&!$('s-prejoin').classList.contains('active')&&!$('s-meeting').classList.contains('active')){
-      show('s-home');
-    }
-    clrA(); busy(false);
-  }else{
-    if(meetId)leaveMtg();
-    show('s-auth');
-  }
-});
-
-function updateHdr(u){
-  const dn=u.displayName||u.email||'User';
-  $('hdr-nm').textContent=dn;
-  if(u.photoURL)$('hdr-av').innerHTML=`<img src="${esc(u.photoURL)}" alt="">`;
-  else $('hdr-av').textContent=dn.slice(0,2).toUpperCase();
-}
-
-/* ─────────────── VERIFY ─────────────── */
-let rcdInt=null,pollInt=null;
-
-async function goVerify(u, sent, sendErr){
-  pendU=u;
-  $('vc-email').textContent=u.email||'—';
-  clrV(); setVS('wait'); show('s-verify');
-
-  if(sent){
-    sA('ve-ok','📬 Verification email sent! Check your inbox and spam folder.');
-  } else if(sendErr){
-    // Email failed to send — tell the user exactly why
-    sA('ve-err',`⚠️ Could not send email (${sendErr}). Click "Resend email" below, or go to Firebase Console → Auth → Settings → Authorized domains and add your site URL.`);
-  } else {
-    // Page refresh / login with unverified account — check immediately
-    try{
-      await u.reload();
-      if(u.emailVerified){ await afterV(u); return; }
-    }catch(e){}
-  }
-  startRCD(sent ? 60 : 10);
-  startPoll();
-}
-
-function setVS(s){
-  $('sdot').className='sdot'+(s==='ok'?' ok':'');
-  $('stext').textContent=s==='ok'?'✓ Email verified!':'Waiting for verification…';
-  if(s==='ok'){['vs2','vs3'].forEach(id=>{$(id).textContent='✓';$(id).className='vnum done';});}
-}
-
-function startPoll(){
-  stopPoll();
-  pollInt=setInterval(async()=>{
-    if(!pendU) return stopPoll();
-    try{
-      // reload() mutates pendU in-place — check pendU.emailVerified directly after
-      await pendU.reload();
-      if(pendU.emailVerified){
-        stopPoll();
-        setVS('ok'); clrV();
-        sA('ve-ok','✓ Email verified! Taking you in…');
-        setTimeout(()=>afterV(pendU), 800);
-      }
-    }catch(e){ /* ignore transient errors */ }
-  }, 2000);
-}
-function stopPoll(){if(pollInt){clearInterval(pollInt);pollInt=null;}}
-
-// Instant check when user switches back to this tab after clicking email link
-document.addEventListener('visibilitychange', async()=>{
-  if(document.visibilityState==='visible' && $('s-verify').classList.contains('active') && pendU){
-    try{
-      await pendU.reload();
-      if(pendU.emailVerified){
-        stopPoll(); setVS('ok'); clrV();
-        sA('ve-ok','✓ Email verified! Taking you in…');
-        setTimeout(()=>afterV(pendU), 800);
-      }
-    }catch(e){}
-  }
-});
-async function checkV(){
-  if(!pendU){show('s-auth');return;}
-  $('vfy-btn').disabled=true; $('vfy-btn').textContent='Checking…';
-  try{
-    await pendU.reload();
-    if(pendU.emailVerified){
-      stopPoll(); setVS('ok'); clrV();
-      sA('ve-ok','✓ Verified!');
-      setTimeout(()=>afterV(pendU), 800);
-    } else {
-      clrV();
-      sA('ve-err','Not verified yet — click the link in your inbox, then try again.');
-    }
-  }catch(e){
-    clrV();
-    sA('ve-err', fbE(e.code)||'Could not check. Try again.');
-  }
-  $('vfy-btn').disabled=false;
-  $('vfy-btn').textContent="✅ I've verified — Continue";
-}
-async function afterV(u){
-  try{await setDoc(doc(db,'users',u.uid),{emailVerified:true},{merge:true});}catch(e){}
-  await loadDeco(u.uid);await loadFam();updateHdr(u);pendU=null;stopPoll();stopRCD();
-  show('s-home');toast('✅ Welcome to NEXUS!');
-}
-async function resendV(){
-  if(!pendU)return;
-  $('resend-btn').disabled=true;
-  let sent=false;
-  // Try with URL first
-  try{ await sendEmailVerification(pendU,{url:window.location.origin}); sent=true; }catch(e1){
-    // Fallback — no URL
-    try{ await sendEmailVerification(pendU); sent=true; }catch(e2){
-      clrV();
-      if(e2.code==='auth/too-many-requests'){
-        sA('ve-err','Too many requests — wait a few minutes then try again.');
-      } else {
-        sA('ve-err',`Failed to send email (${e2.code}). Go to Firebase Console → Auth → Settings → Authorized domains and add: ${window.location.hostname}`);
-      }
-      $('resend-btn').disabled=false;
-      return;
-    }
-  }
-  if(sent){ clrV(); sA('ve-ok','📬 Email sent! Check your inbox and spam folder.'); startRCD(60); }
-}
-function startRCD(s){stopRCD();let r=s;$('resend-btn').disabled=true;$('resend-cd').textContent=`(${r}s)`;rcdInt=setInterval(()=>{r--;if(r<=0)stopRCD();else $('resend-cd').textContent=`(${r}s)`;},1000);}
-function stopRCD(){if(rcdInt){clearInterval(rcdInt);rcdInt=null;}$('resend-btn').disabled=false;$('resend-cd').textContent='';}
-function backToAuth(){stopPoll();stopRCD();pendU=null;signOut(auth).then(()=>show('s-auth')).catch(()=>show('s-auth'));}
-
-/* ─────────────── DECORATION ─────────────── */
-const EMOJIS='😊😎🔥⚡🌟💎🎯🚀👑🎭🦁🐯🦊🐼🐸🦋🌈🍀🌸🎵🎮💻📱🏆💪✌️🤙👋🫶❤️🧡💛💚💙💜⭐🌙☀️🌊🌺🎂🧁🍦🌮☕🧃🎁🎈🎉🎤🎸🥁🏠✈️🛸'.split('');
-
-async function loadDeco(uid){
-  if(!uid)return;
-  try{
-    const snap=await getDoc(doc(db,'users',uid));
-    if(snap.exists()&&snap.data().deco) myDeco={...snap.data().deco};
-  }catch(e){console.warn('loadDeco:',e.message);}
-}
-
-async function saveDeco(){
-  if(!CU)return;
-  try{await setDoc(doc(db,'users',CU.uid),{deco:myDeco},{merge:true});}catch(e){}
-}
-
-function openDeco(){
-  pendDeco={...myDeco};
-  const dn=CU?.displayName||CU?.email||'You';
-  if(CU?.photoURL)$('dp-av').innerHTML=`<img src="${esc(CU.photoURL)}" alt="">`;
-  else{$('dp-av').textContent=dn.slice(0,2).toUpperCase();$('dp-av').style.background=uid2col(CU?.uid||'');}
-  // Size btns
-  document.querySelectorAll('.sz-btn').forEach(b=>{
-    b.classList.toggle('active',b.dataset.sz===(pendDeco.size||'md'));
-    b.onclick=()=>{document.querySelectorAll('.sz-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');pendDeco={...pendDeco,size:b.dataset.sz};updDecoPreview();};
-  });
-  // Emoji grid
-  const g=$('emj-grid');g.innerHTML='';
-  EMOJIS.forEach(em=>{
-    const b=document.createElement('button');b.className='emj'+(pendDeco.type==='emoji'&&pendDeco.value===em?' sel':'');b.textContent=em;
-    b.onclick=()=>{g.querySelectorAll('.emj').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');pendDeco={...pendDeco,type:'emoji',value:em};updDecoPreview();};
-    g.appendChild(b);
-  });
-  renderImgThumbs();updDecoPreview();
-  $('m-deco').classList.add('show');
-}
-
-function updDecoPreview(){
-  const dn=CU?.displayName||CU?.email||'You';
-  const el=$('dp-name');el.innerHTML='';
-  const t=document.createElement('span');t.textContent=dn;el.appendChild(t);
-  if(famEmails.has((CU?.email||'').toLowerCase())){const f=document.createElement('span');f.className='fv';f.textContent='✔';el.appendChild(f);}
-  if(pendDeco.type&&pendDeco.value){
-    const d=document.createElement('span');
-    const sz=pendDeco.size||'md';
-    if(pendDeco.type==='emoji'){d.textContent=pendDeco.value;d.style.fontSize=sz==='sm'?'13px':sz==='lg'?'22px':'17px';}
-    else{const img=document.createElement('img');img.src=pendDeco.value;img.style.cssText=`width:${sz==='sm'?'15px':sz==='lg'?'26px':'20px'};height:auto;border-radius:3px;vertical-align:middle`;d.appendChild(img);}
-    el.appendChild(d);
-  }
-}
-
-function renderImgThumbs(){
-  const wrap=$('img-thumbs');wrap.innerHTML='';
-  const imgs=JSON.parse(sessionStorage.getItem('nx_imgs')||'[]');
-  imgs.forEach((url,i)=>{
-    const th=document.createElement('div');th.className='img-th'+(pendDeco.type==='image'&&pendDeco.value===url?' sel':'');
-    th.innerHTML=`<img src="${url}" alt=""><button class="rm">✕</button>`;
-    th.querySelector('img').onclick=()=>{wrap.querySelectorAll('.img-th').forEach(x=>x.classList.remove('sel'));th.classList.add('sel');pendDeco={...pendDeco,type:'image',value:url};document.querySelectorAll('.emj').forEach(x=>x.classList.remove('sel'));updDecoPreview();};
-    th.querySelector('.rm').onclick=e=>{e.stopPropagation();const a=JSON.parse(sessionStorage.getItem('nx_imgs')||'[]');a.splice(i,1);sessionStorage.setItem('nx_imgs',JSON.stringify(a));if(pendDeco.value===url)pendDeco={...pendDeco,type:null,value:null};renderImgThumbs();updDecoPreview();};
-    wrap.appendChild(th);
-  });
-}
-
-function addImgToDeco(dataUrl){
-  const imgs=JSON.parse(sessionStorage.getItem('nx_imgs')||'[]');
-  if(imgs.length>=8){toast('⚠️ Max 8 images');return;}
-  imgs.push(dataUrl);sessionStorage.setItem('nx_imgs',JSON.stringify(imgs));
-  pendDeco={...pendDeco,type:'image',value:dataUrl};
-  document.querySelectorAll('.emj').forEach(x=>x.classList.remove('sel'));
-  renderImgThumbs();updDecoPreview();
-}
-
-function handlePaste(e){
-  if(!$('m-deco').classList.contains('show'))return;
-  const items=(e.clipboardData||e.originalEvent?.clipboardData)?.items;
-  if(!items)return;
-  for(const item of items){
-    if(item.type.startsWith('image/')){
-      e.preventDefault();
-      const file=item.getAsFile();if(!file)return;
-      if(file.size>600*1024){toast('⚠️ Image too large — max 600KB');return;}
-      const r=new FileReader();
-      r.onload=ev=>{
-        addImgToDeco(ev.target.result);
-        const pz=$('paste-zone');pz.textContent='✅ Image pasted!';pz.style.borderColor='var(--ok)';pz.style.color='var(--ok)';
-        setTimeout(()=>{pz.textContent='📋 Click here then press Ctrl+V to paste an image';pz.style.borderColor='rgba(124,111,255,.4)';pz.style.color='#b0a8ff';},2000);
-      };
-      r.readAsDataURL(file);break;
-    }
-  }
-}
-
-function updateCtrlName(){
-  const dn=CU?.displayName||CU?.email||'You';
-  const el=$('ctrl-nm');el.innerHTML='';
-  const t=document.createElement('span');t.textContent=dn;el.appendChild(t);
-  if(myDeco.type&&myDeco.value){
-    const d=document.createElement('span');const sz=myDeco.size||'md';
-    if(myDeco.type==='emoji'){d.textContent=myDeco.value;d.style.fontSize=sz==='sm'?'13px':sz==='lg'?'20px':'16px';}
-    else{const img=document.createElement('img');img.src=myDeco.value;img.style.cssText=`width:${sz==='sm'?'13px':sz==='lg'?'22px':'17px'};height:auto;border-radius:3px;vertical-align:middle`;d.appendChild(img);}
-    el.appendChild(d);
-  }
-}
-
-/* ─────────────── FAMILY ─────────────── */
-async function loadFam(){
-  if(!CU)return;
-  try{const s=await getDocs(collection(db,`users/${CU.uid}/family`));famEmails.clear();s.forEach(d=>{if(d.data().email)famEmails.add(d.data().email.toLowerCase());});}catch(e){}
-}
-function isFam(email){return email&&famEmails.has(email.toLowerCase());}
-async function addFam(email){
-  if(!email||!CU)return;email=email.toLowerCase().trim();
-  famOk('');// clear alerts first
-  if(famEmails.has(email)){famOk('Already added!');return;}
-  try{
-    await setDoc(doc(db,`users/${CU.uid}/family/${email.replace(/[.@]/g,'_')}`),{email,addedAt:serverTimestamp()});
-    famEmails.add(email);renderFamList();famOk(`✔ Badge given to ${email}`);$('fam-inp').value='';
-  }catch(e){
-    ['fam-err','fam-ok'].forEach(id=>{$(id).textContent='';$(id).classList.remove('show');});
-    $('fam-err').textContent='Failed: '+e.message;$('fam-err').classList.add('show');
-  }
-}
-async function rmFam(email){
-  try{await deleteDoc(doc(db,`users/${CU.uid}/family/${email.replace(/[.@]/g,'_')}`));famEmails.delete(email);renderFamList();famOk('Badge removed.');}
-  catch(e){$('fam-err').textContent='Failed: '+e.message;$('fam-err').classList.add('show');}
-}
-function famOk(m){
-  ['fam-err','fam-ok'].forEach(id=>{$(id).textContent='';$(id).classList.remove('show');});
-  if(m){$('fam-ok').textContent=m;$('fam-ok').classList.add('show');setTimeout(()=>$('fam-ok').classList.remove('show'),3000);}
-}
-function renderFamList(){
-  const l=$('fam-list');l.innerHTML='';
-  if(!famEmails.size){l.innerHTML='<div style="text-align:center;color:var(--t3);font-size:13px;padding:14px">No family members yet</div>';return;}
-  famEmails.forEach(e=>{const it=document.createElement('div');it.className='fam-item';it.innerHTML=`<span class="fv">✔</span><span class="fam-email">${esc(e)}</span><button class="fam-rm">✕</button>`;it.querySelector('.fam-rm').onclick=()=>rmFam(e);l.appendChild(it);});
-}
-
-/* ─────────────── PRE-JOIN ─────────────── */
-async function goPrejoin(){
-  pjMic=true;pjCam=true;micOn=true;camOn=true;
-  $('pj-mi').textContent='🎤';$('pj-ml').textContent='Mute';
-  $('pj-ci').textContent='📹';$('pj-cl').textContent='Stop Video';
-  $('pj-camoff').style.display='none';
-
-  const raw=$('mtg-inp').value.trim()||genId();
-  $('mtg-inp').value=raw;
-  $('pj-sub').textContent='Meeting ID: '+raw;
-  $('live-id').textContent=raw;
-  meetId=raw.replace(/\s/g,'');
-  show('s-prejoin');
-
-  try{
-    pjStream=await navigator.mediaDevices.getUserMedia({video:true,audio:true});
-    $('pj-vid').srcObject=pjStream;
-    $('pj-vid').play().catch(()=>{});
-    $('pj-camoff').style.display='none';
-  }catch(e){
-    // Try audio only
-    try{
-      pjStream=await navigator.mediaDevices.getUserMedia({video:false,audio:true});
-      camOn=false;pjCam=false;
-      $('pj-camoff').style.display='flex';
-      $('pj-ci').textContent='🚫';$('pj-cl').textContent='No Camera';
-      toast('📷 Camera blocked — joining with audio only');
-    }catch(e2){
-      pjStream=null;
-      $('pj-camoff').style.display='flex';
-      toast('⚠️ No camera or mic — please allow access in browser settings');
-    }
-  }
-}
-function backHome(){stopS(pjStream);pjStream=null;show('s-home');}
-function togPjMic(){pjMic=!pjMic;if(pjStream)pjStream.getAudioTracks().forEach(t=>t.enabled=pjMic);$('pj-mi').textContent=pjMic?'🎤':'🔇';$('pj-ml').textContent=pjMic?'Mute':'Unmute';micOn=pjMic;}
-function togPjCam(){pjCam=!pjCam;if(pjStream)pjStream.getVideoTracks().forEach(t=>t.enabled=pjCam);$('pj-camoff').style.display=pjCam?'none':'flex';$('pj-ci').textContent=pjCam?'📹':'🚫';$('pj-cl').textContent=pjCam?'Stop Video':'Start Video';camOn=pjCam;}
-
-/* ─────────────── JOIN ─────────────── */
-async function joinMtg(){
-  localStream=pjStream;sharing=false;isRec=false;
-  const dn=CU?.displayName||CU?.email||'You';
-  show('s-meeting');updateCtrlName();syncCtrl();startTimer();
-
-  try{
-    await setDoc(doc(db,`meetings/${meetId}`),{id:meetId,host:CU.uid,hostName:dn,startedAt:serverTimestamp(),active:true},{merge:true});
-    await setDoc(doc(db,mp('participants/'+CU.uid)),{uid:CU.uid,name:dn,email:CU.email||null,photoURL:CU.photoURL||null,deco:myDeco.type?myDeco:null,joinedAt:serverTimestamp(),active:true});
-  }catch(e){
-    console.error('join write failed:',e.code,e.message);
-    if(e.code==='permission-denied'){
-      toast('⚠️ Firestore rules blocking — go to Firebase Console → Firestore → Rules and set: allow read, write: if request.auth != null');
-    }
-  }
-
-  addLocalTile();
-
-  // Connect to existing participants
-  try{
-    const snap=await getDocs(collection(db,mp('participants')));
-    for(const d of snap.docs){
-      const p=d.data();
-      if(p.uid!==CU.uid&&p.active!==false){partMap[p.uid]=p;await callPeer(p.uid);}
-    }
-  }catch(e){console.warn('existing parts:',e.message);}
-
-  listenParts();listenCalls();subChat();updateParts();
-}
-
-/* ─────────────── WEBRTC ─────────────── */
-async function callPeer(uid){
-  if(peers[uid]||connecting.has(uid))return;connecting.add(uid);
-  try{
-    const pc=new RTCPeerConnection(ICE);peers[uid]=pc;setupPC(pc,uid);
-    if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-    const cid=`${CU.uid}_${uid}`;
-    const cr=doc(db,mp('connections/'+cid));
-    const ccr=collection(cr,'callerCandidates');
-    pc.onicecandidate=e=>{if(e.candidate)addDoc(ccr,e.candidate.toJSON()).catch(()=>{});};
-    const offer=await pc.createOffer();await pc.setLocalDescription(offer);
-    await setDoc(cr,{callerUid:CU.uid,calleeUid:uid,offer:{type:offer.type,sdp:offer.sdp}});
-    const u1=onSnapshot(cr,s=>{const d=s.data();if(d?.answer&&!pc.currentRemoteDescription)pc.setRemoteDescription(new RTCSessionDescription(d.answer)).catch(()=>{});});
-    const u2=onSnapshot(collection(cr,'answerCandidates'),s=>{s.docChanges().forEach(c=>{if(c.type==='added')pc.addIceCandidate(new RTCIceCandidate(c.doc.data())).catch(()=>{});});});
-    unsubs.push(u1,u2);
-  }catch(e){
-    console.error('callPeer error:',e.code,e.message);
-    if(e.code==='permission-denied') toast('⚠️ Firestore rules blocking video calls — update rules in Firebase Console');
-  }
-  connecting.delete(uid);
-}
-
-async function answerPeer(callerUid,cid,offer){
-  if(peers[callerUid]||connecting.has(callerUid))return;connecting.add(callerUid);
-  try{
-    const pc=new RTCPeerConnection(ICE);peers[callerUid]=pc;setupPC(pc,callerUid);
-    if(localStream)localStream.getTracks().forEach(t=>pc.addTrack(t,localStream));
-    const cr=doc(db,mp('connections/'+cid));
-    const acr=collection(cr,'answerCandidates');
-    pc.onicecandidate=e=>{if(e.candidate)addDoc(acr,e.candidate.toJSON()).catch(()=>{});};
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const ans=await pc.createAnswer();await pc.setLocalDescription(ans);
-    await setDoc(cr,{answer:{type:ans.type,sdp:ans.sdp}},{merge:true});
-    const u=onSnapshot(collection(cr,'callerCandidates'),s=>{s.docChanges().forEach(c=>{if(c.type==='added')pc.addIceCandidate(new RTCIceCandidate(c.doc.data())).catch(()=>{});});});
-    unsubs.push(u);
-  }catch(e){console.warn('answerPeer:',e.message);}
-  connecting.delete(callerUid);
-}
-
-function setupPC(pc,uid){
-  const rs=new MediaStream();
-  pc.ontrack=e=>{
-    if(!rs.getTrackById(e.track.id))rs.addTrack(e.track);
-    addRemoteTile(uid,rs);
-    e.track.onunmute=()=>addRemoteTile(uid,rs);
-  };
-  pc.onconnectionstatechange=()=>{if(['disconnected','failed','closed'].includes(pc.connectionState))rmPeer(uid);};
-  pc.oniceconnectionstatechange=()=>{if(pc.iceConnectionState==='failed')try{pc.restartIce();}catch(e){};};
-}
-
-/* ─────────────── LISTENERS ─────────────── */
-function listenParts(){
-  let first=true;
-  const u=onSnapshot(collection(db,mp('participants')),snap=>{
-    snap.docChanges().forEach(ch=>{
-      const p=ch.doc.data();if(p.uid===CU.uid)return;
-      if(ch.type==='added'&&p.active!==false){partMap[p.uid]=p;updateParts();if(!first)toast(`👋 ${p.name||'Someone'} joined`);}
-      if((ch.type==='modified'&&p.active===false)||ch.type==='removed')rmPeer(p.uid);
-    });
-    first=false;
-  },e=>console.warn('listenParts:',e.message));
-  unsubs.push(u);
-}
-
-function listenCalls(){
-  const u=onSnapshot(collection(db,mp('connections')),snap=>{
-    (async()=>{
-      for(const ch of snap.docChanges()){
-        if(ch.type==='added'){
-          const d=ch.doc.data();
-          if(d.calleeUid===CU.uid&&d.offer&&!peers[d.callerUid]&&!connecting.has(d.callerUid)){
-            partMap[d.callerUid]=partMap[d.callerUid]||{name:'Participant',photoURL:null,email:null,deco:null};
-            await answerPeer(d.callerUid,ch.doc.id,d.offer);
-          }
-        }
-      }
-    })();
-  },e=>console.warn('listenCalls:',e.message));
-  unsubs.push(u);
-}
-
-function subChat(){
-  $('chat-msgs').innerHTML='';
-  if(chatUnsub){try{chatUnsub();}catch(e){}}chatUnsub=null;
-  try{
-    chatUnsub=onSnapshot(
-      query(collection(db,mp('messages')),orderBy('timestamp','asc')),
-      snap=>snap.docChanges().forEach(ch=>{
-        if(ch.type==='added'){const d=ch.doc.data();appendMsg(d.senderName,d.senderEmail,d.timestamp?.toDate?.()??new Date(),d.text,d.senderId===CU?.uid);}
-      }),
-      e=>{console.warn('chat listener:',e.message);if(e.code==='permission-denied')toast('⚠️ Firestore rules needed — see Firebase Console → Rules');}
-    );
-  }catch(e){console.warn('subChat:',e.message);}
-}
-
-async function sendChat(){
-  const inp=$('chat-inp'),text=inp.value.trim();
-  if(!text||!CU)return;inp.value='';
-  try{
-    await addDoc(collection(db,mp('messages')),{
-      text,senderId:CU.uid,senderName:CU.displayName||CU.email,
-      senderEmail:CU.email||null,timestamp:serverTimestamp()
-    });
-  }catch(e){toast('⚠️ Send failed: '+(e.code==='permission-denied'?'Update Firestore rules':e.message));inp.value=text;}
-}
-
-function appendMsg(sender,sEmail,ts,text,me){
-  const msgs=$('chat-msgs');
-  const time=ts instanceof Date?ts.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
-  const fam=isFam(sEmail);
-  const div=document.createElement('div');div.className='cmsg'+(me?' me':'');
-  div.innerHTML=`<div class="cmsg-hdr"><span class="cmsg-sndr">${esc(sender)}${fam?'<span class="fv" style="margin-left:3px">✔</span>':''}</span><span class="cmsg-time">${time}</span></div><div class="cmsg-txt">${esc(text)}</div>`;
-  msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
-}
-
-/* ─────────────── TILES ─────────────── */
-function makeName(name,email,deco,local){
-  const w=document.createElement('span');w.style.cssText='display:inline-flex;align-items:center;gap:4px;max-width:185px;overflow:hidden';
-  const t=document.createElement('span');t.className='tname-txt';t.textContent=(name||'?')+(local?' (You)':'');w.appendChild(t);
-  if(isFam(email)){const f=document.createElement('span');f.className='fv';f.textContent='✔';w.appendChild(f);}
-  if(deco?.type&&deco?.value){
-    const d=document.createElement('span');const sz=deco.size||'md';
-    if(deco.type==='emoji'){d.textContent=deco.value;d.style.fontSize=sz==='sm'?'12px':sz==='lg'?'20px':'15px';}
-    else{const img=document.createElement('img');img.src=deco.value;img.style.cssText=`width:${sz==='sm'?'13px':sz==='lg'?'22px':'17px'};height:auto;border-radius:3px;vertical-align:middle;flex-shrink:0`;d.appendChild(img);}
-    w.appendChild(d);
-  }
-  return w;
-}
-
-function makeTile(uid,name,photo,local,deco,email){
-  const tile=document.createElement('div');
-  tile.className='vtile'+(local?' local':'');tile.id=`vt-${uid}`;
-  const sr=document.createElement('div');sr.className='sring';
-  // Avatar
-  const av=document.createElement('div');av.className='vtile-av';av.style.display='none';
-  const circ=document.createElement('div');circ.className='av-circle';circ.style.background=uid2col(uid);
-  if(photo){const img=document.createElement('img');img.src=photo;img.alt='';circ.appendChild(img);}
-  else circ.textContent=(name||'?').slice(0,2).toUpperCase();
-  const avnl=document.createElement('div');avnl.className='av-name-lbl';avnl.appendChild(makeName(name,email,deco,false));
-  av.append(circ,avnl);
-  // Overlay
-  const ov=document.createElement('div');ov.className='vtile-ov';
-  const nm=document.createElement('div');nm.className='tname';nm.appendChild(makeName(name,email,deco,local));
-  // Muted badge
-  const mb=document.createElement('div');mb.className='tmuted-ic';mb.textContent='🔇';mb.style.display='none';nm.appendChild(mb);
-  ov.appendChild(nm);
-  tile.append(sr,av,ov);
-  return tile;
-}
-
-function addLocalTile(){
-  // Remove existing local tile if any
-  const existing=$(`vt-${CU.uid}`);
-  if(existing)existing.remove();
-
-  const dn=CU?.displayName||CU?.email||'You';
-  const tile=makeTile(CU.uid,dn,CU.photoURL,true,myDeco,CU.email);
-
-  if(localStream&&localStream.getVideoTracks().length>0&&camOn){
-    const vid=document.createElement('video');
-    vid.autoplay=true;vid.muted=true;vid.playsInline=true;
-    vid.setAttribute('playsinline','');
-    vid.srcObject=localStream;
-    vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000';
-    // Force play (needed on mobile/Safari)
-    vid.addEventListener('loadedmetadata',()=>vid.play().catch(()=>{}));
-    tile.insertBefore(vid,tile.firstChild);
-    tile.querySelector('.vtile-av').style.display='none';
-  }else{
-    // No camera — show avatar
-    tile.querySelector('.vtile-av').style.display='flex';
-  }
-
-  $('vgrid').appendChild(tile);
-  updGrid();
-  updateParts();
-}
-
-function addRemoteTile(uid,stream){
-  const p=partMap[uid]||{};
-  const ex=$(`vt-${uid}`);
-
-  if(ex){
-    let vid=ex.querySelector('video');
-    if(!vid){
-      vid=document.createElement('video');vid.autoplay=true;vid.playsInline=true;
-      vid.setAttribute('playsinline','');
-      vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000';
-      ex.insertBefore(vid,ex.firstChild);
-    }
-    vid.srcObject=stream;
-    vid.play().catch(()=>{});
-    const avEl=ex.querySelector('.vtile-av');
-    const hasVideo=stream.getVideoTracks().length>0;
-    if(avEl)avEl.style.display=hasVideo?'none':'flex';
-    return;
-  }
-
-  const tile=makeTile(uid,p.name||'Participant',p.photoURL||null,false,p.deco||null,p.email||null);
-  const vid=document.createElement('video');
-  vid.autoplay=true;vid.playsInline=true;
-  vid.setAttribute('playsinline','');
-  vid.srcObject=stream;
-  vid.style.cssText='position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block;background:#000';
-  vid.addEventListener('loadedmetadata',()=>vid.play().catch(()=>{}));
-  tile.insertBefore(vid,tile.firstChild);
-
-  const hasVideo=stream.getVideoTracks().length>0;
-  tile.querySelector('.vtile-av').style.display=hasVideo?'none':'flex';
-
-  $('vgrid').appendChild(tile);
-  updGrid();
-  updateParts();
-}
-
-function rmPeer(uid){
-  if(peers[uid]){try{peers[uid].close();}catch(e){}delete peers[uid];}
-  const tile=$(`vt-${uid}`);const nm=partMap[uid]?.name||'Participant';
-  if(tile)tile.remove();delete partMap[uid];updGrid();updateParts();toast(`${nm} left`);
-}
-
-function updGrid(){
-  const g=$('vgrid'),n=g.children.length;
-  g.className='vgrid '+(n<=1?'g1':n===2?'g2':n===3?'g3':n<=4?'g4':'g6');
-}
-
-function updateParts(){
-  if(!CU)return;
-  const l=$('panel-p');l.innerHTML='';
-  const dn=CU?.displayName||CU?.email||'You';
-  const all=[{uid:CU.uid,name:dn+' (You)',photoURL:CU?.photoURL,email:CU?.email,muted:!micOn,host:true,deco:myDeco},...Object.values(partMap)];
-  $('pcnt').textContent=all.length;
-  all.forEach(p=>{
-    const it=document.createElement('div');it.className='part-item';
-    const av=document.createElement('div');av.className='part-av';av.style.background=uid2col(p.uid)+'30';av.style.color=uid2col(p.uid);
-    if(p.photoURL)av.innerHTML=`<img src="${esc(p.photoURL)}" alt="">`;else av.textContent=(p.name||'?').slice(0,2).toUpperCase();
-    const info=document.createElement('div');info.className='part-info';
-    const nm=document.createElement('div');nm.className='part-nm';nm.appendChild(makeName(p.name,p.email,p.deco,false));
-    const role=document.createElement('div');role.className='part-role';role.textContent=p.host?'👑 Host':'Participant';
-    info.append(nm,role);
-    const icons=document.createElement('div');icons.className='part-icons';
-    icons.innerHTML=`<span class="${p.muted?'mx':''}">${p.muted?'🔇':'🎤'}</span>`;
-    it.append(av,info,icons);l.appendChild(it);
-  });
-}
-
-/* ─────────────── CONTROLS ─────────────── */
-function startTimer(){timerSec=0;clearInterval(timerInt);timerInt=setInterval(()=>{timerSec++;const m=String(Math.floor(timerSec/60)).padStart(2,'0'),s=String(timerSec%60).padStart(2,'0');$('timer').textContent=`${m}:${s}`;},1000);}
-
-function syncCtrl(){
-  $('mic-i').textContent=micOn?'🎤':'🔇';$('mic-l').textContent=micOn?'Mute':'Unmute';$('mic-btn').className='cbtn'+(micOn?'':' off');
-  $('cam-i').textContent=camOn?'📹':'🚫';$('cam-l').textContent=camOn?'Stop Video':'Start Video';$('cam-btn').className='cbtn'+(camOn?'':' off');
-}
-
-function togMic(){
-  micOn=!micOn;if(localStream)localStream.getAudioTracks().forEach(t=>t.enabled=micOn);syncCtrl();toast(micOn?'🎤 Mic on':'🔇 Mic muted');
-  const mt=$(`vt-${CU.uid}`);if(mt){const mb=mt.querySelector('.tmuted-ic');if(mb)mb.style.display=micOn?'none':'flex';}
-}
-
-function togCam(){
-  camOn=!camOn;if(localStream)localStream.getVideoTracks().forEach(t=>t.enabled=camOn);syncCtrl();
-  const mt=$(`vt-${CU.uid}`);
-  if(mt){const v=mt.querySelector('video'),a=mt.querySelector('.vtile-av');if(v)v.style.display=camOn?'block':'none';if(a)a.style.display=camOn?'none':'flex';}
-  toast(camOn?'📹 Camera on':'🚫 Camera off');
-}
-
-async function togScr(){
-  if(!sharing){
-    try{
-      const ss=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
-      const st=ss.getVideoTracks()[0];
-      Object.values(peers).forEach(pc=>{const s=pc.getSenders().find(x=>x.track?.kind==='video');if(s)s.replaceTrack(st).catch(()=>{});});
-      const mt=$(`vt-${CU.uid}`);if(mt){const v=mt.querySelector('video');if(v){v.srcObject=ss;v.style.display='block';}const a=mt.querySelector('.vtile-av');if(a)a.style.display='none';}
-      sharing=true;$('scr-btn').className='cbtn on';$('scr-ring').className='scr-ring show';toast('🖥️ Screen sharing');
-      st.onended=()=>{if(sharing)togScr();};
-    }catch(e){if(e.name!=='NotAllowedError')toast('Screen share failed: '+e.message);}
-  }else{
-    if(localStream){const ct=localStream.getVideoTracks()[0];if(ct){Object.values(peers).forEach(pc=>{const s=pc.getSenders().find(x=>x.track?.kind==='video');if(s)s.replaceTrack(ct).catch(()=>{});});}const mt=$(`vt-${CU.uid}`);if(mt){const v=mt.querySelector('video');if(v)v.srcObject=localStream;}}
-    sharing=false;$('scr-btn').className='cbtn';$('scr-ring').className='scr-ring';toast('🛑 Stopped sharing');
-  }
-}
-
-/* ─────────────── RECORDING ─────────────── */
-function togRec(){
-  if(!isRec){
-    // Collect all streams: local + all remote
-    const streams=[];
-    if(localStream)streams.push(localStream);
-    // Get remote streams from video elements
-    document.querySelectorAll('.vtile:not(.local) video').forEach(v=>{if(v.srcObject)streams.push(v.srcObject);});
-
-    let recStream;
-    if(streams.length===0){toast('⚠️ No streams to record');return;}
-
-    // Mix all streams into one using AudioContext + canvas if multiple
-    // For simplicity record local stream + show info toast
-    try{
-      // Try to record a composite stream
-      const ctx=new AudioContext();
-      const dest=ctx.createMediaStreamDestination();
-      streams.forEach(s=>{
-        if(s.getAudioTracks().length>0){
-          try{ctx.createMediaStreamSource(s).connect(dest);}catch(e){}
-        }
-      });
-      // Use local video track + mixed audio
-      const videoTrack=localStream?.getVideoTracks()[0];
-      const tracks=[];
-      if(videoTrack)tracks.push(videoTrack);
-      if(dest.stream.getAudioTracks().length)tracks.push(dest.stream.getAudioTracks()[0]);
-      recStream=new MediaStream(tracks.length?tracks:(localStream?[...localStream.getTracks()]:[...streams[0].getTracks()]));
-    }catch(e){
-      recStream=localStream||streams[0];
-    }
-
-    try{
-      const mimeType=MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')?'video/webm;codecs=vp9,opus':MediaRecorder.isTypeSupported('video/webm')?'video/webm':'video/mp4';
-      mediaRec=new MediaRecorder(recStream,{mimeType});
-      recChunks=[];
-      mediaRec.ondataavailable=e=>{if(e.data.size>0)recChunks.push(e.data);};
-      mediaRec.onstop=()=>{
-        const blob=new Blob(recChunks,{type:mediaRec.mimeType||'video/webm'});
-        const url=URL.createObjectURL(blob);
-        const a=document.createElement('a');a.href=url;a.download=`nexus-rec-${Date.now()}.webm`;a.click();
-        URL.revokeObjectURL(url);toast('💾 Recording saved!');
-      };
-      mediaRec.start(1000);
-      isRec=true;$('rec-btn').className='cbtn rec-on';$('rec-l').textContent='Stop Rec';$('rec-badge').classList.add('show');toast('🔴 Recording started');
-    }catch(e){toast('Recording failed: '+e.message);}
-  }else{
-    if(mediaRec&&mediaRec.state!=='inactive')mediaRec.stop();
-    isRec=false;$('rec-btn').className='cbtn';$('rec-l').textContent='Record';$('rec-badge').classList.remove('show');
-  }
-}
-
-/* ─────────────── SIDEBAR ─────────────── */
-function togSB(p){const sb=$('sidebar');if(sbPanel===p){sb.classList.add('hidden');sbPanel=null;}else{sbPanel=p;sb.classList.remove('hidden');switchTab(p);}}
-function switchTab(t){
-  $('panel-p').style.display=t==='p'?'flex':'none';
-  $('panel-p').style.flexDirection='column';
-  $('panel-c').style.display=t==='c'?'flex':'none';
-  $('panel-c').style.flexDirection='column';
-  $('tab-p').className='sbtab'+(t==='p'?' active':'');
-  $('tab-c').className='sbtab'+(t==='c'?' active':'');
-  if(t==='c')setTimeout(()=>{const m=$('chat-msgs');m.scrollTop=m.scrollHeight;},50);
-}
-function copyLink(){const id=$('live-id').textContent;navigator.clipboard.writeText(`${location.origin}?join=${id.replace(/\s/g,'')}`).then(()=>toast('📋 Link copied!')).catch(()=>toast('ID: '+id));}
-
-/* ─────────────── LEAVE ─────────────── */
-function leaveMtg(){
-  clearInterval(timerInt);
-  if(isRec&&mediaRec&&mediaRec.state!=='inactive')mediaRec.stop();
-  Object.values(peers).forEach(pc=>{try{pc.close();}catch(e){}});Object.keys(peers).forEach(k=>delete peers[k]);
-  stopS(localStream);localStream=null;
-  unsubs.forEach(fn=>{try{fn();}catch(e){}});unsubs.length=0;
-  if(chatUnsub){try{chatUnsub();}catch(e){}chatUnsub=null;}
-  if(CU&&meetId){
-    const mid=meetId;
-    setDoc(doc(db,`meetings/${mid}/participants/${CU.uid}`),{active:false},{merge:true}).catch(()=>{});
-    setDoc(doc(db,`meetings/${mid}`),{active:false,endedAt:serverTimestamp()},{merge:true}).catch(()=>{});
-  }
-  Object.keys(partMap).forEach(k=>delete partMap[k]);connecting.clear();meetId=null;sharing=false;isRec=false;
-  $('vgrid').innerHTML='';$('m-leave').classList.remove('show');$('timer').textContent='00:00';
-  $('sidebar').classList.add('hidden');$('scr-ring').className='scr-ring';$('rec-badge').classList.remove('show');sbPanel=null;
-  show('s-home');toast('👋 You left the meeting');
-}
-
-/* ─────────────── DOTS ─────────────── */
-(()=>{const c=$('dots'),cl=['#7c6fff','#ff6b35','#2ecc71','#f39c12','#e74c3c'];for(let i=0;i<12;i++){const d=document.createElement('div');d.className='dot';const s=Math.random()*80+20;d.style.cssText=`width:${s}px;height:${s}px;left:${Math.random()*100}%;background:${cl[i%cl.length]};animation-duration:${Math.random()*14+10}s;animation-delay:${Math.random()*10}s`;c.appendChild(d);}})();
-
-/* ─────────────── EVENT WIRING ─────────────── */
-// Auth
-$('g-btn').onclick=doGoogle;
-$('auth-btn').onclick=doEmail;
-$('auth-sw').onclick=()=>setMode(mode==='login'?'signup':'login');
-[$('f-email'),$('f-pass'),$('f-name')].forEach(el=>el?.addEventListener('keydown',e=>{if(e.key==='Enter')doEmail();}));
-let pwv=false;
-$('pw-eye').onclick=()=>{pwv=!pwv;$('f-pass').type=pwv?'text':'password';$('pw-eye').textContent=pwv?'🙈':'👁';};
-
-// Verify
-$('vfy-btn').onclick=checkV;
-$('resend-btn').onclick=resendV;
-$('vfy-back').onclick=backToAuth;
-
-// Home
-$('signout-btn').onclick=()=>signOut(auth);
-$('new-mtg-btn').onclick=()=>{$('mtg-inp').value=genId();goPrejoin();};
-$('focus-join').onclick=()=>$('mtg-inp').focus();
-$('join-btn').onclick=goPrejoin;
-$('mtg-inp').addEventListener('keydown',e=>{if(e.key==='Enter')goPrejoin();});
-
-// Deco
-$('deco-btn').onclick=()=>{loadDeco(CU.uid).then(openDeco);};
-$('deco-cancel').onclick=()=>$('m-deco').classList.remove('show');
-$('deco-save').onclick=()=>{myDeco={...pendDeco};saveDeco();$('m-deco').classList.remove('show');updateCtrlName();toast('✨ Badge saved!');};
-$('deco-clear').onclick=()=>{pendDeco={type:null,value:null,size:'md'};document.querySelectorAll('.emj').forEach(x=>x.classList.remove('sel'));$('img-thumbs').querySelectorAll('.img-th').forEach(x=>x.classList.remove('sel'));updDecoPreview();};
-$('paste-zone').onclick=function(){this.focus();this.textContent='✅ Ready! Press Ctrl+V now';this.style.borderColor='var(--ok)';this.style.color='var(--ok)';setTimeout(()=>{this.textContent='📋 Click here then press Ctrl+V to paste an image';this.style.borderColor='rgba(124,111,255,.4)';this.style.color='#b0a8ff';},3500);};
-document.addEventListener('paste',handlePaste);
-$('img-inp').onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>600*1024){toast('⚠️ Max 600KB');return;}const r=new FileReader();r.onload=ev=>addImgToDeco(ev.target.result);r.readAsDataURL(f);e.target.value='';};
-
-// Family
-$('fam-btn').onclick=()=>{loadFam().then(renderFamList);$('m-fam').classList.add('show');};
-$('fam-close').onclick=()=>$('m-fam').classList.remove('show');
-$('fam-add').onclick=()=>addFam($('fam-inp').value);
-$('fam-inp').addEventListener('keydown',e=>{if(e.key==='Enter')addFam($('fam-inp').value);});
-
-// Pre-join
-$('pj-cancel').onclick=backHome;
-$('pj-join').onclick=joinMtg;
-$('pj-mic').onclick=togPjMic;
-$('pj-cam').onclick=togPjCam;
-
-// Meeting
-$('mic-btn').onclick=togMic;
-$('cam-btn').onclick=togCam;
-$('scr-btn').onclick=togScr;
-$('rec-btn').onclick=togRec;
-$('rxn-btn').onclick=()=>$('rxn-pop').classList.toggle('show');
-$('chat-btn').onclick=()=>togSB('c');
-$('ppl-btn').onclick=()=>togSB('p');
-$('leave-btn').onclick=()=>$('m-leave').classList.add('show');
-$('view-btn').onclick=()=>{const g=$('vgrid'),n=g.children.length,ls=['g1','g2','g3','g4','g6'];layoutIdx=(layoutIdx+1)%ls.length;g.className='vgrid '+ls[layoutIdx];toast('Layout changed');};
-$('copy-btn').onclick=copyLink;
-$('live-id').onclick=copyLink;
-$('tab-p').onclick=()=>switchTab('p');
-$('tab-c').onclick=()=>switchTab('c');
-$('chat-send').onclick=sendChat;
-$('chat-inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});
-$('m-stay').onclick=()=>$('m-leave').classList.remove('show');
-$('m-leave-ok').onclick=leaveMtg;
-
-// Reactions
-document.querySelectorAll('.rxbn').forEach(b=>b.onclick=()=>{
-  $('rxn-pop').classList.remove('show');
-  const el=document.createElement('div');el.className='float-rxn';el.textContent=b.dataset.e;el.style.left=(15+Math.random()*70)+'%';
-  document.body.appendChild(el);setTimeout(()=>el.remove(),3000);
-});
-document.addEventListener('click',e=>{if(!e.target.closest('.rxn-pop')&&!e.target.closest('#rxn-btn'))$('rxn-pop').classList.remove('show');});
-
-// Close modals on backdrop click
-['m-deco','m-fam','m-leave'].forEach(id=>{$(id).addEventListener('click',e=>{if(e.target===e.currentTarget)$(id).classList.remove('show');});});
-
-window.addEventListener('beforeunload',()=>{
-  const mid=meetId,uid=CU?.uid;
-  if(uid&&mid)setDoc(doc(db,`meetings/${mid}/participants/${uid}`),{active:false},{merge:true}).catch(()=>{});
-  Object.values(peers).forEach(pc=>{try{pc.close();}catch(e){}});
-  stopS(localStream);
-});
-
-// Auto-join from URL ?join=xxxxx
-const uj=new URLSearchParams(location.search).get('join');
-if(uj)onAuthStateChanged(auth,u=>{if(u&&u.emailVerified){$('mtg-inp').value=uj.replace(/(\d{3})(\d{3})(\d{3})/,'$1 $2 $3');setTimeout(goPrejoin,600);}});
-</script>
-</body>
-</html>
+    <div id="leaveModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal" style="text-align: center;">
+            <h3>Leave Meeting?</h3>
+            <div style="display:flex; gap:10px; margin-top: 20px;">
+                <button style="flex:1; background:#242629;" onclick="closeModal('leaveModal')">Cancel</button>
+                <button style="flex:1;" class="danger" onclick="leaveMeeting()">Leave</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, addDoc, query, orderBy, serverTimestamp, updateDoc, deleteDoc, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBBXlMsVKCVZg7wkw2CjWeetnGkpINV_M4",
+            authDomain: "webnexus-cdc47.firebaseapp.com",
+            projectId: "webnexus-cdc47",
+            storageBucket: "webnexus-cdc47.firebasestorage.app",
+            messagingSenderId: "185823698270",
+            appId: "1:185823698270:web:b92eb6507a6974e46043cf"
+        };
+
+        const a
